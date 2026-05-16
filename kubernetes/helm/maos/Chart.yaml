@@ -1,0 +1,35 @@
+# MAOS v10.0 Helm Chart
+# Chart.yaml
+
+apiVersion: v2
+name: maos
+description: A Helm chart for MAOS - Multi-Agent Orchestration System v10.0
+type: application
+version: 10.0.0
+appVersion: "10.0.0"
+keywords:
+  - multi-agent
+  - orchestration
+  - ai
+  - orchestration-platform
+  - kubernetes
+  - cloud-native
+maintainers:
+  - name: MAOS Team
+    email: support@maos.io
+    url: https://maos.io
+home: https://maos.io
+sources:
+  - https://github.com/maos-project/maos
+icon: https://maos.io/logo.png
+
+dependencies: []
+
+annotations:
+  category: Application Framework
+  licenses: MIT
+  tags:
+    - kubernetes
+    - cloud-native
+    - multi-agent
+    - orchestration

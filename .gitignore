@@ -1,0 +1,89 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual Environment
+venv/
+env/
+ENV/
+.venv
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Cache
+*.pyc
+__pycache__/
+
+# Generated files
+*.pyc
+*.pyo
+*.pyd
+
+# npm
+node_modules/
+
+# Docker
+*.dockerignore
+.dockerignore
+
+# CI
+.github/workflows/*.yml
+!example.yml
+
+# Documentation builds
+docs/_build/
+
+# Benchmark outputs
+*.benchmark
+
+# Temp files
+*.tmp
+*.bak
+*.backup
+
+# Jupyter Notebook
+.ipynb_checkpoints

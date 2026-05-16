@@ -1,0 +1,43 @@
+# MAOS v5.0 - Docker Compose
+# Development and production deployment configuration
+
+version: '3.8'
+
+services:
+  maos-api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: maos-v5-api
+    ports:
+      - "8000:8000"
+    environment:
+      - MAOS_SYSTEM_NAME=MAOS
+      - MAOS_DEBUG=false
+      - MAOS_API_HOST=0.0.0.0
+      - MAOS_API_PORT=8000
+      - MAOS_MAX_TASKS=10
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 5s
+    volumes:
+      - ./maos:/app/maos:ro
+
+  maos-dashboard:
+    image: nginx:alpine
+    container_name: maos-v5-dashboard
+    ports:
+      - "8080:80"
+    volumes:
+      - ./maos_dashboard.html:/usr/share/nginx/html/index.html:ro
+    restart: unless-stopped
+    depends_on:
+      - maos-api
+
+networks:
+  default:
+    name: maos-v5-network

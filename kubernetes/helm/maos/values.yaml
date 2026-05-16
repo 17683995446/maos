@@ -1,0 +1,360 @@
+# MAOS v10.0 Helm Chart - Values
+# 默认配置值
+
+# 全局配置
+global:
+  imageRegistry: ""
+  imagePullSecrets: []
+  storageClass: ""
+  labels: {}
+  annotations: {}
+
+# 镜像配置
+image:
+  repository: maos/maos
+  tag: "v10.0"
+  pullPolicy: IfNotPresent
+  pullSecrets: []
+
+# 副本配置
+replicaCount: 3
+
+# MAOS应用配置
+maos:
+  # 系统配置
+  systemName: "MAOS"
+  systemVersion: "10.0.0"
+  debug: false
+  logLevel: "INFO"
+  
+  # API配置
+  api:
+    host: "0.0.0.0"
+    port: 8000
+    cors:
+      enabled: true
+      origins: ["*"]
+    rateLimit:
+      enabled: true
+      requestsPerMinute: 1000
+    auth:
+      enabled: true
+      jwt:
+        secret: "change-me-in-production"
+        expirationHours: 24
+      oauth2:
+        enabled: true
+        providers:
+          google:
+            enabled: false
+          github:
+            enabled: false
+  
+  # WebSocket配置
+  websocket:
+    enabled: true
+    port: 8001
+    pingInterval: 30
+    maxConnections: 10000
+  
+  # 存储配置
+  storage:
+    type: "json"  # json, redis, postgresql
+    json:
+      path: "/data"
+    redis:
+      host: ""
+      port: 6379
+      password: ""
+      db: 0
+    postgresql:
+      host: ""
+      port: 5432
+      database: "maos"
+      username: "maos"
+      password: ""
+  
+  # 缓存配置
+  cache:
+    enabled: true
+    type: "memory"  # memory, redis
+    ttl: 3600
+    maxSize: 1000
+  
+  # 监控配置
+  monitoring:
+    enabled: true
+    metrics:
+      enabled: true
+      port: 9090
+    tracing:
+      enabled: false
+      endpoint: ""
+    logging:
+      level: "INFO"
+      format: "json"
+  
+  # 安全配置
+  security:
+    tls:
+      enabled: true
+      certManager:
+        enabled: false
+        issuerRef:
+          name: "letsencrypt-prod"
+          kind: "ClusterIssuer"
+      secretName: "maos-tls"
+    rbac:
+      enabled: true
+      defaultRole: "viewer"
+  
+  # 多租户配置
+  multiTenant:
+    enabled: false
+    isolation: true
+    maxTenants: 100
+
+# 服务配置
+service:
+  type: LoadBalancer
+  port: 80
+  httpsPort: 443
+  annotations: {}
+  labels: {}
+  # NodePort配置
+  nodePort:
+    enabled: false
+    apiPort: 30080
+    wsPort: 30081
+  # ClusterIP配置
+  clusterIP: ""
+  # 负载均衡器配置
+  loadBalancer:
+    enabled: true
+    ip: ""
+    sourceRanges: []
+    annotations: {}
+
+# 入口配置
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-body-size: "50m"
+  hosts:
+    - host: "maos.example.com"
+      paths:
+        - path: /
+          pathType: Prefix
+          service: api
+    - host: "api.maos.example.com"
+      paths:
+        - path: /
+          pathType: Prefix
+          service: api
+    - host: "ws.maos.example.com"
+      paths:
+        - path: /
+          pathType: Prefix
+          service: websocket
+  tls:
+    - secretName: maos-tls
+      hosts:
+        - "maos.example.com"
+        - "api.maos.example.com"
+        - "ws.maos.example.com"
+
+# 资源配额
+resources:
+  limits:
+    cpu: 2000m
+    memory: 2Gi
+  requests:
+    cpu: 500m
+    memory: 512Mi
+
+# 健康检查
+livenessProbe:
+  enabled: true
+  path: /health
+  initialDelaySeconds: 30
+  periodSeconds: 10
+  timeoutSeconds: 5
+  failureThreshold: 3
+
+readinessProbe:
+  enabled: true
+  path: /health/ready
+  initialDelaySeconds: 5
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 3
+
+startupProbe:
+  enabled: true
+  path: /health
+  initialDelaySeconds: 10
+  periodSeconds: 5
+  timeoutSeconds: 3
+  failureThreshold: 30
+
+# 自动扩缩容
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 20
+  targetCPUUtilizationPercentage: 70
+  targetMemoryUtilizationPercentage: 80
+  # 自定义指标
+  customMetrics:
+    - type: Pods
+      pods:
+        metric:
+          name: maos_http_requests_total
+        target:
+          type: AverageValue
+          averageValue: "100"
+
+# 持久化存储
+persistence:
+  enabled: true
+  storageClass: "standard"
+  accessMode: ReadWriteOnce
+  size: 10Gi
+  annotations: {}
+  # 多副本共享存储
+  sharedStorage:
+    enabled: false
+    storageClass: "nfs"
+    path: "/data/maos"
+
+# 高级配置
+# 副本配置
+replicas: 3
+
+# 更新策略
+updateStrategy:
+  type: RollingUpdate
+  rollingUpdate:
+    maxSurge: 1
+    maxUnavailable: 0
+
+# Pod调度
+nodeSelector: {}
+tolerations: []
+affinity:
+  podAntiAffinity:
+    preferredDuringSchedulingIgnoredDuringExecution:
+    - weight: 100
+      podAffinityTerm:
+        labelSelector:
+          matchExpressions:
+          - key: app
+            operator: In
+            values:
+            - maos
+        topologyKey: kubernetes.io/hostname
+
+# 额外环境变量
+extraEnvVars: []
+# - name: MAOS_EXTRA_CONFIG
+#   value: "{}"
+
+# 额外配置卷
+extraVolumes: []
+# - name: config
+#   configMap:
+#     name: maos-config
+
+# 额外配置卷挂载
+extraVolumeMounts: []
+# - name: config
+#   mountPath: /config
+
+# 初始化容器
+initContainers: []
+# - name: init-db
+#   image: maos/maos:v10.0
+#   command: ['sh', '-c', 'echo "Init"']
+
+# 边车容器
+sidecars: []
+# - name: logger
+#   image: busybox
+#   command: ['sh', '-c', 'tail -f /var/log/maos.log']
+
+# 指标导出器
+metrics:
+  enabled: true
+  serviceMonitor:
+    enabled: false
+    namespace: monitoring
+    interval: 30s
+  prometheusRule:
+    enabled: false
+    namespace: monitoring
+
+# Grafana仪表板
+dashboards:
+  enabled: true
+  labels:
+    grafana_dashboard: "1"
+  namespace: ""
+
+# 告警规则
+alerting:
+  enabled: false
+  namespace: monitoring
+  rules:
+    - name: maos-alerts
+      rules:
+        - alert: MAOSDown
+          expr: up{job="maos"} == 0
+          for: 1m
+          labels:
+            severity: critical
+          annotations:
+            summary: "MAOS instance down"
+            description: "MAOS has been down for more than 1 minute."
+
+# Pod Disruption Budget
+podDisruptionBudget:
+  enabled: true
+  minAvailable: 2
+
+# 网络策略
+networkPolicy:
+  enabled: false
+  ingress:
+    - from:
+      - namespaceSelector:
+          matchLabels:
+            name: production
+  egress:
+    - to:
+      - namespaceSelector: {}
+
+# 模板
+templates:
+  NOTES.txt: |
+    MAOS v10.0 已成功安装！
+    
+    查看服务:
+    kubectl get svc -n {{ .Release.Namespace }}
+    
+    获取API地址:
+    {{- if eq .Values.service.type "LoadBalancer" }}
+    export API_URL="http://$(kubectl get svc {{ include "maos.fullname" . }} -n {{ .Release.Namespace }} -o jsonpath='{.status.loadBalancer.ingress[0].ip}')"
+    {{- else if eq .Values.service.type "NodePort" }}
+    export API_URL="http://$(kubectl get node -o jsonpath='{.items[0].status.addresses[0].address}'):{{ .Values.service.nodePort.apiPort }}"
+    {{- else }}
+    export API_URL="http://{{ include "maos.fullname" . }}.{{ .Release.Namespace }}.svc.cluster.local"
+    {{- end }}
+    
+    查看Pod状态:
+    kubectl get pods -n {{ .Release.Namespace }}
+    
+    查看日志:
+    kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/name={{ include "maos.name" . }}

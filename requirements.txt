@@ -1,0 +1,28 @@
+# MAOS v5.0 - Requirements
+# Core dependencies for the Multi-Agent Orchestration System
+
+# FastAPI and API dependencies
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+pydantic>=2.5.0
+
+# LLM Integration
+openai>=1.10.0
+python-dotenv>=1.0.0
+
+# Optional: for Redis support (comment out if not needed)
+# redis>=5.0.0
+# hiredis>=2.2.0
+
+# Optional: for PostgreSQL support (comment out if not needed)
+# psycopg2-binary>=2.9.0
+# sqlalchemy>=2.0.0
+
+# Testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+
+# Code quality
+black>=23.0.0
+flake8>=6.0.0
+mypy>=1.6.0
