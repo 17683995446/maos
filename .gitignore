@@ -19,25 +19,12 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-MANIFEST
 
-# Virtual Environment
+# Virtual environments
 venv/
-env/
 ENV/
+env/
 .venv
-
-# Testing
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-.hypothesis/
-
-# Environment
-.env
-.env.local
-.env.*.local
 
 # IDE
 .vscode/
@@ -50,40 +37,42 @@ htmlcov/
 .DS_Store
 Thumbs.db
 
-# Logs
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
 *.log
-logs/
 
-# Cache
-*.pyc
-__pycache__/
-
-# Generated files
-*.pyc
-*.pyo
-*.pyd
-
-# npm
+# Node
 node_modules/
+npm-debug.log
+yarn-error.log
 
-# Docker
-*.dockerignore
-.dockerignore
+# Environment
+.env
+.env.local
+.env.*.local
 
-# CI
-.github/workflows/*.yml
-!example.yml
+# Logs
+logs/
+*.log
 
-# Documentation builds
-docs/_build/
-
-# Benchmark outputs
-*.benchmark
-
-# Temp files
+# Temporary files
 *.tmp
-*.bak
-*.backup
+*.temp
+.tmp/
 
-# Jupyter Notebook
-.ipynb_checkpoints
+# Database
+*.db
+*.sqlite
+
+# Virtual machine
+*.class
+bin/
+obj/
+
+# Build artifacts
+*.o
+*.a
+*.so
+*.dylib

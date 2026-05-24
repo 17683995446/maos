@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional, Callable
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import uuid
+import threading
 
 
 class ChartType(Enum):
@@ -100,56 +101,83 @@ class AnalyticsReport:
 
 
 class AnalyticsEngine:
-    """分析引擎"""
+    """分析引擎 - 线程安全版本"""
     
-    def __init__(self):
+    def __init__(self, max_metric_points: int = 10000):
+        self._lock = threading.RLock()
         self._dashboards: Dict[str, Dashboard] = {}
         self._metrics_store: Dict[str, List[ChartDataPoint]] = {}
+        self._max_metric_points = max_metric_points
+    
+    def cleanup(self):
+        """清理资源，防止内存泄漏"""
+        with self._lock:
+            self._metrics_store.clear()
+            self._dashboards.clear()
+    
+    def clear_old_metrics(self, older_than_days: int = 30):
+        """清理过期的指标数据"""
+        cutoff = datetime.now() - timedelta(days=older_than_days)
+        with self._lock:
+            for name in list(self._metrics_store.keys()):
+                self._metrics_store[name] = [
+                    dp for dp in self._metrics_store[name] 
+                    if dp.timestamp >= cutoff
+                ]
+    
+    def __del__(self):
+        """析构函数，确保清理资源"""
+        self.cleanup()
     
     def record_metric(self, name: str, value: float, timestamp: datetime = None, metadata: Dict[str, Any] = None) -> None:
-        """记录指标"""
-        if name not in self._metrics_store:
-            self._metrics_store[name] = []
-        
-        self._metrics_store[name].append(ChartDataPoint(
-            timestamp=timestamp or datetime.now(),
-            value=value,
-            metadata=metadata or {}
-        ))
-        
-        # 保留最近10000条记录
-        if len(self._metrics_store[name]) > 10000:
-            self._metrics_store[name] = self._metrics_store[name][-10000:]
+        """记录指标 - 线程安全"""
+        with self._lock:
+            if name not in self._metrics_store:
+                self._metrics_store[name] = []
+            
+            safe_metadata = dict(metadata) if metadata is not None else {}
+            safe_value = value if value is not None else 0.0
+            
+            self._metrics_store[name].append(ChartDataPoint(
+                timestamp=timestamp or datetime.now(),
+                value=safe_value,
+                metadata=safe_metadata
+            ))
+            
+            if len(self._metrics_store[name]) > self._max_metric_points:
+                self._metrics_store[name] = self._metrics_store[name][-self._max_metric_points:]
     
     def get_metric_data(self, name: str, time_range: TimeRange = TimeRange.LAST_24_HOURS,
                        start_time: datetime = None, end_time: datetime = None) -> List[ChartDataPoint]:
-        """获取指标数据"""
-        data = self._metrics_store.get(name, [])
-        
-        now = datetime.now()
-        if time_range == TimeRange.LAST_HOUR:
-            start = now - timedelta(hours=1)
-        elif time_range == TimeRange.LAST_24_HOURS:
-            start = now - timedelta(hours=24)
-        elif time_range == TimeRange.LAST_7_DAYS:
-            start = now - timedelta(days=7)
-        elif time_range == TimeRange.LAST_30_DAYS:
-            start = now - timedelta(days=30)
-        elif time_range == TimeRange.CUSTOM and start_time:
-            start = start_time
-            end = end_time or now
-        else:
-            start = now - timedelta(hours=24)
-        
-        end = end_time if end_time else now
-        return [d for d in data if start <= d.timestamp <= end]
+        """获取指标数据 - 线程安全"""
+        with self._lock:
+            data = self._metrics_store.get(name, [])
+            
+            now = datetime.now()
+            if time_range == TimeRange.LAST_HOUR:
+                start = now - timedelta(hours=1)
+            elif time_range == TimeRange.LAST_24_HOURS:
+                start = now - timedelta(hours=24)
+            elif time_range == TimeRange.LAST_7_DAYS:
+                start = now - timedelta(days=7)
+            elif time_range == TimeRange.LAST_30_DAYS:
+                start = now - timedelta(days=30)
+            elif time_range == TimeRange.CUSTOM and start_time:
+                start = start_time
+                end = end_time or now
+            else:
+                start = now - timedelta(hours=24)
+            
+            end = end_time if end_time else now
+            return [d for d in data if start <= d.timestamp <= end]
     
     def get_all_metrics(self) -> Dict[str, List[ChartDataPoint]]:
-        """获取所有指标"""
-        return self._metrics_store
+        """获取所有指标 - 线程安全，返回副本"""
+        with self._lock:
+            return {name: list(data) for name, data in self._metrics_store.items()}
     
     def calculate_summary(self, name: str, time_range: TimeRange = TimeRange.LAST_24_HOURS) -> MetricSummary:
-        """计算指标摘要"""
+        """计算指标摘要 - 线程安全"""
         data = self.get_metric_data(name, time_range)
         if not data:
             return MetricSummary(name=name, value=0.0)
@@ -179,73 +207,105 @@ class AnalyticsEngine:
             trend=trend
         )
     
+    def get_summary(self) -> Dict[str, Any]:
+        """获取分析引擎摘要 - 线程安全"""
+        with self._lock:
+            total_metrics = sum(len(data) for data in self._metrics_store.values())
+            total_dashboards = len(self._dashboards)
+            total_widgets = sum(len(d.widgets) for d in self._dashboards.values())
+            
+            # 计算每个指标的统计
+            metric_stats = {}
+            for name, data in self._metrics_store.items():
+                if data:
+                    values = [d.value for d in data]
+                    metric_stats[name] = {
+                        'count': len(values),
+                        'min': min(values) if values else 0,
+                        'max': max(values) if values else 0,
+                        'avg': sum(values) / len(values) if values else 0,
+                        'latest': values[-1] if values else 0
+                    }
+            
+            return {
+                'total_metrics': total_metrics,
+                'total_dashboards': total_dashboards,
+                'total_widgets': total_widgets,
+                'metric_names': list(self._metrics_store.keys()),
+                'metric_stats': metric_stats,
+                'max_metric_points': self._max_metric_points
+            }
+    
     def create_dashboard(self, name: str, description: str = "") -> Dashboard:
-        """创建仪表盘"""
-        dashboard = Dashboard(name=name, description=description)
-        self._dashboards[dashboard.id] = dashboard
-        return dashboard
+        """创建仪表盘 - 线程安全"""
+        with self._lock:
+            dashboard = Dashboard(name=name, description=description)
+            self._dashboards[dashboard.id] = dashboard
+            return dashboard
     
     def add_widget(self, dashboard_id: str, name: str, chart_type: ChartType, 
                   metric_name: str, position: Dict[str, int] = None) -> DashboardWidget:
-        """添加组件到仪表盘"""
-        dashboard = self._dashboards.get(dashboard_id)
-        if not dashboard:
-            return None
-        
-        config = ChartConfig(title=name)
-        data = self.get_metric_data(metric_name)
-        
-        widget = DashboardWidget(
-            name=name,
-            chart_type=chart_type,
-            config=config,
-            data=data,
-            position=position or {"x": len(dashboard.widgets) * 4, "y": 0, "width": 4, "height": 3}
-        )
-        
-        dashboard.widgets.append(widget)
-        dashboard.updated_at = datetime.now()
-        return widget
+        """添加组件到仪表盘 - 线程安全"""
+        with self._lock:
+            dashboard = self._dashboards.get(dashboard_id)
+            if not dashboard:
+                return None
+            
+            config = ChartConfig(title=name)
+            data = self.get_metric_data(metric_name)
+            
+            widget = DashboardWidget(
+                name=name,
+                chart_type=chart_type,
+                config=config,
+                data=list(data),  # 创建副本
+                position=position or {"x": len(dashboard.widgets) * 4, "y": 0, "width": 4, "height": 3}
+            )
+            
+            dashboard.widgets.append(widget)
+            dashboard.updated_at = datetime.now()
+            return widget
     
     def generate_report(self, title: str, period: str = "last_24_hours") -> AnalyticsReport:
-        """生成分析报告"""
-        metrics = [
-            self.calculate_summary("executions", TimeRange.LAST_24_HOURS),
-            self.calculate_summary("errors", TimeRange.LAST_24_HOURS),
-            self.calculate_summary("latency_ms", TimeRange.LAST_24_HOURS),
-            self.calculate_summary("throughput", TimeRange.LAST_24_HOURS),
-            self.calculate_summary("cost_usd", TimeRange.LAST_24_HOURS),
-        ]
-        
-        insights = []
-        recommendations = []
-        
-        for metric in metrics:
-            if metric.name == "errors" and metric.value > 100:
-                insights.append(f"高错误率检测: {metric.value} 错误")
-                recommendations.append("建议检查工作流配置和Agent状态")
-            if metric.name == "latency_ms" and metric.value > 500:
-                insights.append(f"高延迟检测: {metric.value}ms")
-                recommendations.append("建议优化工作流步骤或增加资源")
-            if metric.name == "cost_usd" and metric.change_percent > 20:
-                insights.append(f"成本增长: +{metric.change_percent}%")
-                recommendations.append("建议审查工作流执行和资源配置")
-        
-        summary = f"报告周期: {period}\n"
-        summary += f"总执行次数: {metrics[0].value}\n"
-        summary += f"错误率: {metrics[1].value}次\n"
-        summary += f"平均延迟: {metrics[2].value}ms\n"
-        summary += f"吞吐量: {metrics[3].value}/min\n"
-        summary += f"成本: ${metrics[4].value:.2f}"
-        
-        return AnalyticsReport(
-            title=title,
-            period=period,
-            summary=summary,
-            insights=insights,
-            recommendations=recommendations,
-            metrics=metrics
-        )
+        """生成分析报告 - 线程安全"""
+        with self._lock:
+            metrics = [
+                self.calculate_summary("executions", TimeRange.LAST_24_HOURS),
+                self.calculate_summary("errors", TimeRange.LAST_24_HOURS),
+                self.calculate_summary("latency_ms", TimeRange.LAST_24_HOURS),
+                self.calculate_summary("throughput", TimeRange.LAST_24_HOURS),
+                self.calculate_summary("cost_usd", TimeRange.LAST_24_HOURS),
+            ]
+            
+            insights = []
+            recommendations = []
+            
+            for metric in metrics:
+                if metric.name == "errors" and metric.value > 100:
+                    insights.append(f"高错误率检测: {metric.value} 错误")
+                    recommendations.append("建议检查工作流配置和Agent状态")
+                if metric.name == "latency_ms" and metric.value > 500:
+                    insights.append(f"高延迟检测: {metric.value}ms")
+                    recommendations.append("建议优化工作流步骤或增加资源")
+                if metric.name == "cost_usd" and metric.change_percent > 20:
+                    insights.append(f"成本增长: +{metric.change_percent}%")
+                    recommendations.append("建议审查工作流执行和资源配置")
+            
+            summary = f"报告周期: {period}\n"
+            summary += f"总执行次数: {metrics[0].value}\n"
+            summary += f"错误率: {metrics[1].value}次\n"
+            summary += f"平均延迟: {metrics[2].value}ms\n"
+            summary += f"吞吐量: {metrics[3].value}/min\n"
+            summary += f"成本: ${metrics[4].value:.2f}"
+            
+            return AnalyticsReport(
+                title=title,
+                period=period,
+                summary=summary,
+                insights=insights,
+                recommendations=recommendations,
+                metrics=metrics
+            )
 
 
 class VisualizationGenerator:

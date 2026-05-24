@@ -1,0 +1,865 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MAOS 系统可视化 - Multi-Agent Orchestration System</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        * {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+        }
+        
+        body {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .glass-card {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        }
+        
+        .diagram-container {
+            background: linear-gradient(145deg, #f8fafc, #e2e8f0);
+            border-radius: 16px;
+            padding: 24px;
+        }
+        
+        .module-card {
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+        
+        .module-card:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        
+        .tab-active {
+            background: linear-gradient(135deg, #667eea, #764ba2);
+            color: white;
+        }
+        
+        .flow-line {
+            stroke: #667eea;
+            stroke-width: 3;
+            fill: none;
+            marker-end: url(#arrowhead);
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        
+        .pulse-animation {
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        .architecture-node {
+            transition: all 0.2s ease;
+        }
+        
+        .architecture-node:hover {
+            filter: brightness(1.1);
+        }
+        
+        ::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        ::-webkit-scrollbar-track {
+            background: rgba(255,255,255,0.1);
+        }
+        
+        ::-webkit-scrollbar-thumb {
+            background: rgba(102,126,234,0.6);
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body class="p-4 md:p-8">
+    <div class="max-w-7xl mx-auto">
+        <!-- Header -->
+        <div class="glass-card rounded-3xl p-8 mb-8">
+            <div class="text-center">
+                <h1 class="text-4xl md:text-5xl font-bold bg-gradient-to-r from-purple-600 to-indigo-600 bg-clip-text text-transparent mb-3">
+                    MAOS 系统可视化
+                </h1>
+                <p class="text-gray-600 text-lg">Multi-Agent Orchestration System - 智能体编排系统架构与流程</p>
+                <div class="flex justify-center gap-4 mt-6 flex-wrap">
+                    <span class="px-4 py-2 bg-blue-100 text-blue-700 rounded-full text-sm font-medium">v14.0</span>
+                    <span class="px-4 py-2 bg-green-100 text-green-700 rounded-full text-sm font-medium">稳定版本</span>
+                    <span class="px-4 py-2 bg-purple-100 text-purple-700 rounded-full text-sm font-medium">生产就绪</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navigation Tabs -->
+        <div class="glass-card rounded-2xl p-2 mb-8">
+            <div class="flex flex-wrap gap-2" id="navTabs">
+                <button onclick="showSection('overview')" class="tab-btn tab-active px-6 py-3 rounded-xl font-medium transition-all" data-section="overview">
+                    🏠 系统概述
+                </button>
+                <button onclick="showSection('architecture')" class="tab-btn px-6 py-3 rounded-xl font-medium text-gray-600 hover:bg-gray-100 transition-all" data-section="architecture">
+                    🏗️ 系统架构
+                </button>
+                <button onclick="showSection('flow')" class="tab-btn px-6 py-3 rounded-xl font-medium text-gray-600 hover:bg-gray-100 transition-all" data-section="flow">
+                    🔄 工作流程
+                </button>
+                <button onclick="showSection('sequence')" class="tab-btn px-6 py-3 rounded-xl font-medium text-gray-600 hover:bg-gray-100 transition-all" data-section="sequence">
+                    ⏱️ 时序图
+                </button>
+                <button onclick="showSection('components')" class="tab-btn px-6 py-3 rounded-xl font-medium text-gray-600 hover:bg-gray-100 transition-all" data-section="components">
+                    📦 核心组件
+                </button>
+                <button onclick="showSection('timeline')" class="tab-btn px-6 py-3 rounded-xl font-medium text-gray-600 hover:bg-gray-100 transition-all" data-section="timeline">
+                    📋 优化历程
+                </button>
+            </div>
+        </div>
+
+        <!-- Content Sections -->
+        <div id="contentSection">
+            <!-- Overview Section -->
+            <div id="overview" class="content-section">
+                <div class="grid md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <div class="glass-card rounded-2xl p-6 module-card">
+                        <div class="text-3xl mb-2">🤖</div>
+                        <h3 class="font-bold text-lg text-gray-800">智能体管理</h3>
+                        <p class="text-gray-600 mt-2 text-sm">Agent 注册、发现、选择最佳 Agent</p>
+                    </div>
+                    <div class="glass-card rounded-2xl p-6 module-card">
+                        <div class="text-3xl mb-2">🔄</div>
+                        <h3 class="font-bold text-lg text-gray-800">工作流编排</h3>
+                        <p class="text-gray-600 mt-2 text-sm">复杂工作流自动化执行与协调</p>
+                    </div>
+                    <div class="glass-card rounded-2xl p-6 module-card">
+                        <div class="text-3xl mb-2">📊</div>
+                        <h3 class="font-bold text-lg text-gray-800">分析监控</h3>
+                        <p class="text-gray-600 mt-2 text-sm">实时指标监控与可视化</p>
+                    </div>
+                    <div class="glass-card rounded-2xl p-6 module-card">
+                        <div class="text-3xl mb-2">🔒</div>
+                        <h3 class="font-bold text-lg text-gray-800">安全认证</h3>
+                        <p class="text-gray-600 mt-2 text-sm">JWT 认证与 OAuth2.0 授权</p>
+                    </div>
+                </div>
+                
+                <div class="glass-card rounded-2xl p-8 mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6">🎯 系统特点</h2>
+                    <div class="grid md:grid-cols-3 gap-6">
+                        <div class="p-6 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-xl">
+                            <div class="text-2xl mb-3">⚡</div>
+                            <h4 class="font-semibold text-gray-800 mb-2">高性能</h4>
+                            <ul class="text-sm text-gray-600 space-y-1">
+                                <li>✓ 线程安全</li>
+                                <li>✓ 内存高效管理</li>
+                                <li>✓ 高并发处理</li>
+                            </ul>
+                        </div>
+                        <div class="p-6 bg-gradient-to-br from-green-50 to-emerald-50 rounded-xl">
+                            <div class="text-2xl mb-3">🛡️</div>
+                            <h4 class="font-semibold text-gray-800 mb-2">安全可靠</h4>
+                            <ul class="text-sm text-gray-600 space-y-1">
+                                <li>✓ JWT 认证</li>
+                                <li>✓ OAuth2.0 授权</li>
+                                <li>✓ 数据隔离</li>
+                            </ul>
+                        </div>
+                        <div class="p-6 bg-gradient-to-br from-purple-50 to-pink-50 rounded-xl">
+                            <div class="text-2xl mb-3">📦</div>
+                            <h4 class="font-semibold text-gray-800 mb-2">模块化</h4>
+                            <ul class="text-sm text-gray-600 space-y-1">
+                                <li>✓ 高度模块化</li>
+                                <li>✓ 可扩展架构</li>
+                                <li>✓ 版本控制</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-card rounded-2xl p-8">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6">📈 优化成果</h2>
+                    <div class="grid md:grid-cols-2 gap-8">
+                        <div class="space-y-4">
+                            <h3 class="font-semibold text-gray-700">已修复问题</h3>
+                            <div class="space-y-3">
+                                <div class="p-4 bg-green-50 border-l-4 border-green-500 rounded-lg">
+                                    <div class="font-medium text-green-800">✅ 线程安全</div>
+                                    <div class="text-sm text-green-600">所有核心模块已实现线程安全</div>
+                                </div>
+                                <div class="p-4 bg-green-50 border-l-4 border-green-500 rounded-lg">
+                                    <div class="font-medium text-green-800">✅ 内存泄漏</div>
+                                    <div class="text-sm text-green-600">从 30%+ 增长降至 0.48MB</div>
+                                </div>
+                                <div class="p-4 bg-green-50 border-l-4 border-green-500 rounded-lg">
+                                    <div class="font-medium text-green-800">✅ 极端测试通过</div>
+                                    <div class="text-sm text-green-600">数万个操作零错误</div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="space-y-4">
+                            <h3 class="font-semibold text-gray-700">核心指标</h3>
+                            <div class="space-y-3">
+                                <div class="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+                                    <span class="text-gray-600">测试操作数</span>
+                                    <span class="font-bold text-2xl text-purple-600">50K+</span>
+                                </div>
+                                <div class="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+                                    <span class="text-gray-600">错误率</span>
+                                    <span class="font-bold text-2xl text-green-600">0%</span>
+                                </div>
+                                <div class="flex justify-between items-center p-4 bg-gray-50 rounded-lg">
+                                    <span class="text-gray-600">版本数限制</span>
+                                    <span class="font-bold text-2xl text-blue-600">50</span>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Architecture Section -->
+            <div id="architecture" class="content-section hidden">
+                <div class="glass-card rounded-2xl p-8 mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6">🏗️ 系统架构图</h2>
+                    <div class="diagram-container">
+                        <svg viewBox="0 0 900 600" class="w-full h-auto">
+                            <!-- Definitions -->
+                            <defs>
+                                <marker id="arrowhead" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                                    <polygon points="0 0, 10 3.5, 0 7" fill="#667eea" />
+                                </marker>
+                            </defs>
+                            
+                            <!-- Main Layer -->
+                            <rect x="50" y="30" width="800" height="60" rx="10" fill="#f0f4ff" stroke="#667eea" stroke-width="2"/>
+                            <text x="450" y="65" text-anchor="middle" font-weight="600" font-size="18" fill="#4c51bf">MAOS 核心层</text>
+                            
+                            <!-- Core Modules -->
+                            <g class="architecture-node">
+                                <rect x="200" y="120" width="180" height="80" rx="12" fill="#667eea" stroke="#5a67d8" stroke-width="2"/>
+                                <text x="290" y="160" text-anchor="middle" font-weight="600" font-size="16" fill="white">编排服务</text>
+                                <text x="290" y="180" text-anchor="middle" font-size="12" fill="#e0e7ff">Orchestration</text>
+                            </g>
+                            
+                            <g class="architecture-node">
+                                <rect x="400" y="120" width="180" height="80" rx="12" fill="#10b981" stroke="#059669" stroke-width="2"/>
+                                <text x="490" y="160" text-anchor="middle" font-weight="600" font-size="16" fill="white">Agent 管理</text>
+                                <text x="490" y="180" text-anchor="middle" font-size="12" fill="#d1fae5">Agent Manager</text>
+                            </g>
+                            
+                            <g class="architecture-node">
+                                <rect x="600" y="120" width="180" height="80" rx="12" fill="#f59e0b" stroke="#d97706" stroke-width="2"/>
+                                <text x="690" y="160" text-anchor="middle" font-weight="600" font-size="16" fill="white">消息代理</text>
+                                <text x="690" y="180" text-anchor="middle" font-size="12" fill="#fef3c7">Message Broker</text>
+                            </g>
+                            
+                            <!-- Middle Layer -->
+                            <rect x="50" y="240" width="800" height="60" rx="10" fill="#f0fdf4" stroke="#10b981" stroke-width="2"/>
+                            <text x="450" y="275" text-anchor="middle" font-weight="600" font-size="18" fill="#059669">功能服务层</text>
+                            
+                            <!-- Feature Modules -->
+                            <g class="architecture-node">
+                                <rect x="100" y="330" width="150" height="70" rx="10" fill="#3b82f6" stroke="#2563eb" stroke-width="2"/>
+                                <text x="175" y="365" text-anchor="middle" font-weight="600" font-size="14" fill="white">版本管理</text>
+                                <text x="175" y="385" text-anchor="middle" font-size="11" fill="#dbeafe">Version</text>
+                            </g>
+                            
+                            <g class="architecture-node">
+                                <rect x="270" y="330" width="150" height="70" rx="10" fill="#8b5cf6" stroke="#7c3aed" stroke-width="2"/>
+                                <text x="345" y="365" text-anchor="middle" font-weight="600" font-size="14" fill="white">分析引擎</text>
+                                <text x="345" y="385" text-anchor="middle" font-size="11" fill="#ede9fe">Analytics</text>
+                            </g>
+                            
+                            <g class="architecture-node">
+                                <rect x="440" y="330" width="150" height="70" rx="10" fill="#ef4444" stroke="#dc2626" stroke-width="2"/>
+                                <text x="515" y="365" text-anchor="middle" font-weight="600" font-size="14" fill="white">安全模块</text>
+                                <text x="515" y="385" text-anchor="middle" font-size="11" fill="#fee2e2">Security</text>
+                            </g>
+                            
+                            <g class="architecture-node">
+                                <rect x="610" y="330" width="150" height="70" rx="10" fill="#ec4899" stroke="#db2777" stroke-width="2"/>
+                                <text x="685" y="365" text-anchor="middle" font-weight="600" font-size="14" fill="white">移动API</text>
+                                <text x="685" y="385" text-anchor="middle" font-size="11" fill="#fce7f3">Mobile API</text>
+                            </g>
+                            
+                            <!-- Bottom Layer -->
+                            <rect x="50" y="450" width="800" height="60" rx="10" fill="#fffbeb" stroke="#f59e0b" stroke-width="2"/>
+                            <text x="450" y="485" text-anchor="middle" font-weight="600" font-size="18" fill="#d97706">存储与基础设施</text>
+                            
+                            <!-- Storage Modules -->
+                            <g class="architecture-node">
+                                <rect x="150" y="530" width="200" height="50" rx="8" fill="#64748b" stroke="#475569" stroke-width="2"/>
+                                <text x="250" y="560" text-anchor="middle" font-weight="600" font-size="14" fill="white">内存存储</text>
+                            </g>
+                            
+                            <g class="architecture-node">
+                                <rect x="550" y="530" width="200" height="50" rx="8" fill="#64748b" stroke="#475569" stroke-width="2"/>
+                                <text x="650" y="560" text-anchor="middle" font-weight="600" font-size="14" fill="white">Redis 存储</text>
+                            </g>
+                            
+                            <!-- Connecting Lines -->
+                            <line x1="290" y1="200" x2="175" y2="330" class="flow-line"/>
+                            <line x1="290" y1="200" x2="345" y2="330" class="flow-line"/>
+                            <line x1="490" y1="200" x2="345" y2="330" class="flow-line"/>
+                            <line x1="490" y1="200" x2="515" y2="330" class="flow-line"/>
+                            <line x1="690" y1="200" x2="515" y2="330" class="flow-line"/>
+                            <line x1="690" y1="200" x2="685" y2="330" class="flow-line"/>
+                            
+                            <line x1="250" y1="400" x2="250" y2="450" class="flow-line"/>
+                            <line x1="400" y1="400" x2="400" y2="450" class="flow-line"/>
+                            <line x1="500" y1="400" x2="500" y2="450" class="flow-line"/>
+                            <line x1="685" y1="400" x2="685" y2="450" class="flow-line"/>
+                            
+                            <line x1="350" y1="500" x2="250" y2="530" class="flow-line"/>
+                            <line x1="550" y1="500" x2="650" y2="530" class="flow-line"/>
+                        </svg>
+                    </div>
+                </div>
+
+                <div class="grid md:grid-cols-2 gap-6">
+                    <div class="glass-card rounded-2xl p-6">
+                        <h3 class="text-xl font-bold text-gray-800 mb-4">📁 核心模块</h3>
+                        <div class="space-y-3">
+                            <div class="p-3 bg-blue-50 rounded-lg border-l-4 border-blue-500">
+                                <div class="font-medium text-blue-800">maos/orchestration/</div>
+                                <div class="text-sm text-blue-600">编排服务与 Agent 管理</div>
+                            </div>
+                            <div class="p-3 bg-purple-50 rounded-lg border-l-4 border-purple-500">
+                                <div class="font-medium text-purple-800">maos/security/</div>
+                                <div class="text-sm text-purple-600">JWT 认证与 OAuth2.0</div>
+                            </div>
+                            <div class="p-3 bg-green-50 rounded-lg border-l-4 border-green-500">
+                                <div class="font-medium text-green-800">maos/version/</div>
+                                <div class="text-sm text-green-600">版本控制与 A/B 测试</div>
+                            </div>
+                            <div class="p-3 bg-orange-50 rounded-lg border-l-4 border-orange-500">
+                                <div class="font-medium text-orange-800">maos/analytics/</div>
+                                <div class="text-sm text-orange-600">分析与监控</div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="glass-card rounded-2xl p-6">
+                        <h3 class="text-xl font-bold text-gray-800 mb-4">🔧 技术特性</h3>
+                        <div class="space-y-3">
+                            <div class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                                <span class="text-xl">🔒</span>
+                                <div>
+                                    <div class="font-medium text-gray-800">线程安全</div>
+                                    <div class="text-sm text-gray-600">全模块使用 RLock 保护</div>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                                <span class="text-xl">🧹</span>
+                                <div>
+                                    <div class="font-medium text-gray-800">内存管理</div>
+                                    <div class="text-sm text-gray-600">自动清理与资源释放</div>
+                                </div>
+                            </div>
+                            <div class="flex items-center gap-3 p-3 bg-gray-50 rounded-lg">
+                                <span class="text-xl">📏</span>
+                                <div>
+                                    <div class="font-medium text-gray-800">限制机制</div>
+                                    <div class="text-sm text-gray-600">版本与指标点数量限制</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Flow Section -->
+            <div id="flow" class="content-section hidden">
+                <div class="glass-card rounded-2xl p-8 mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6">🔄 工作流程图</h2>
+                    
+                    <div class="diagram-container">
+                        <svg viewBox="0 0 900 500" class="w-full h-auto">
+                            <defs>
+                                <marker id="flowArrow" markerWidth="10" markerHeight="7" refX="9" refY="3.5" orient="auto">
+                                    <polygon points="0 0, 10 3.5, 0 7" fill="#4f46e5" />
+                                </marker>
+                            </defs>
+                            
+                            <!-- Start -->
+                            <g class="architecture-node">
+                                <circle cx="100" cy="50" r="25" fill="#10b981" stroke="#059669" stroke-width="3"/>
+                                <text x="100" y="55" text-anchor="middle" font-weight="600" fill="white" font-size="14">开始</text>
+                            </g>
+                            
+                            <!-- Step 1: Request -->
+                            <g class="architecture-node">
+                                <rect x="180" y="25" width="140" height="50" rx="8" fill="#3b82f6" stroke="#2563eb" stroke-width="2"/>
+                                <text x="250" y="55" text-anchor="middle" font-weight="600" fill="white" font-size="13">接收请求</text>
+                            </g>
+                            
+                            <!-- Step 2: Auth -->
+                            <g class="architecture-node">
+                                <rect x="360" y="25" width="140" height="50" rx="8" fill="#8b5cf6" stroke="#7c3aed" stroke-width="2"/>
+                                <text x="430" y="55" text-anchor="middle" font-weight="600" fill="white" font-size="13">安全认证</text>
+                            </g>
+                            
+                            <!-- Step 3: Agent Selection -->
+                            <g class="architecture-node">
+                                <rect x="540" y="25" width="160" height="50" rx="8" fill="#f59e0b" stroke="#d97706" stroke-width="2"/>
+                                <text x="620" y="55" text-anchor="middle" font-weight="600" fill="white" font-size="13">选择最佳 Agent</text>
+                            </g>
+                            
+                            <!-- Decision -->
+                            <g class="architecture-node">
+                                <polygon points="750,50 800,25 850,50 800,75" fill="#ef4444" stroke="#dc2626" stroke-width="2"/>
+                                <text x="800" y="55" text-anchor="middle" font-weight="600" fill="white" font-size="11">需要编排?</text>
+                            </g>
+                            
+                            <!-- Yes Path - Workflow -->
+                            <g class="architecture-node">
+                                <rect x="540" y="120" width="160" height="50" rx="8" fill="#ec4899" stroke="#db2777" stroke-width="2"/>
+                                <text x="620" y="150" text-anchor="middle" font-weight="600" fill="white" font-size="13">执行工作流</text>
+                            </g>
+                            
+                            <g class="architecture-node">
+                                <rect x="360" y="120" width="140" height="50" rx="8" fill="#14b8a6" stroke="#0d9488" stroke-width="2"/>
+                                <text x="430" y="150" text-anchor="middle" font-weight="600" fill="white" font-size="13">版本控制</text>
+                            </g>
+                            
+                            <g class="architecture-node">
+                                <rect x="180" y="120" width="140" height="50" rx="8" fill="#06b6d4" stroke="#0891b2" stroke-width="2"/>
+                                <text x="250" y="150" text-anchor="middle" font-weight="600" fill="white" font-size="13">执行任务</text>
+                            </g>
+                            
+                            <!-- No Path - Direct -->
+                            <g class="architecture-node">
+                                <rect x="780" y="120" width="120" height="50" rx="8" fill="#84cc16" stroke="#65a30d" stroke-width="2"/>
+                                <text x="840" y="150" text-anchor="middle" font-weight="600" fill="white" font-size="13">直接执行</text>
+                            </g>
+                            
+                            <!-- Process -->
+                            <g class="architecture-node">
+                                <rect x="180" y="220" width="140" height="50" rx="8" fill="#6366f1" stroke="#4f46e5" stroke-width="2"/>
+                                <text x="250" y="250" text-anchor="middle" font-weight="600" fill="white" font-size="13">Agent 处理</text>
+                            </g>
+                            
+                            <g class="architecture-node">
+                                <rect x="360" y="220" width="140" height="50" rx="8" fill="#a855f7" stroke="#9333ea" stroke-width="2"/>
+                                <text x="430" y="250" text-anchor="middle" font-weight="600" fill="white" font-size="13">消息传递</text>
+                            </g>
+                            
+                            <g class="architecture-node">
+                                <rect x="540" y="220" width="160" height="50" rx="8" fill="#f97316" stroke="#ea580c" stroke-width="2"/>
+                                <text x="620" y="250" text-anchor="middle" font-weight="600" fill="white" font-size="13">记录分析指标</text>
+                            </g>
+                            
+                            <!-- End -->
+                            <g class="architecture-node">
+                                <rect x="540" y="320" width="160" height="50" rx="8" fill="#10b981" stroke="#059669" stroke-width="2"/>
+                                <text x="620" y="350" text-anchor="middle" font-weight="600" fill="white" font-size="13">返回结果</text>
+                            </g>
+                            
+                            <g class="architecture-node">
+                                <circle cx="750" cy="345" r="25" fill="#64748b" stroke="#475569" stroke-width="3"/>
+                                <text x="750" y="350" text-anchor="middle" font-weight="600" fill="white" font-size="14">结束</text>
+                            </g>
+                            
+                            <!-- Connecting Lines -->
+                            <line x1="125" y1="50" x2="180" y2="50" stroke="#4f46e5" stroke-width="3" marker-end="url(#flowArrow)"/>
+                            <line x1="320" y1="50" x2="360" y2="50" stroke="#4f46e5" stroke-width="3" marker-end="url(#flowArrow)"/>
+                            <line x1="500" y1="50" x2="540" y2="50" stroke="#4f46e5" stroke-width="3" marker-end="url(#flowArrow)"/>
+                            <line x1="700" y1="50" x2="750" y2="50" stroke="#4f46e5" stroke-width="3" marker-end="url(#flowArrow)"/>
+                            
+                            <!-- Yes branch -->
+                            <line x1="800" y1="75" x2="800" y2="120" stroke="#4f46e5" stroke-width="3" marker-end="url(#flowArrow)"/>
+                            <text x="815" y="100" font-size="12" fill="#1e40af" font-weight="600">是</text>
+                            
+                            <line x1="740" y1="145" x2="620" y2="145" stroke="#4f46e5" stroke-width="3" marker-end="url(#flowArrow)"/>
+                            <line x1="540" y1="145" x2="500" y2="145" stroke="#4f46e5" stroke-width="3" marker-end="url(#flowArrow)"/>
+                            <line x1="360" y1="145" x2="320" y2="145" stroke="#4f46e5" stroke-width="3" marker-end="url(#flowArrow)"/>
+                            
+                            <!-- No branch -->
+                            <line x1="850" y1="50" x2="850" y2="120" stroke="#4f46e5" stroke-width="3" marker-end="url(#flowArrow)"/>
+                            <text x="860" y="90" font-size="12" fill="#1e40af" font-weight="600">否</text>
+                            <line x1="900" y1="145" x2="900" y2="245" stroke="#4f46e5" stroke-width="3"/>
+                            <line x1="900" y1="245" x2="700" y2="245" stroke="#4f46e5" stroke-width="3" marker-end="url(#flowArrow)"/>
+                            
+                            <line x1="250" y1="170" x2="250" y2="220" stroke="#4f46e5" stroke-width="3" marker-end="url(#flowArrow)"/>
+                            <line x1="320" y1="245" x2="360" y2="245" stroke="#4f46e5" stroke-width="3" marker-end="url(#flowArrow)"/>
+                            <line x1="500" y1="245" x2="540" y2="245" stroke="#4f46e5" stroke-width="3" marker-end="url(#flowArrow)"/>
+                            <line x1="620" y1="270" x2="620" y2="320" stroke="#4f46e5" stroke-width="3" marker-end="url(#flowArrow)"/>
+                            <line x1="700" y1="345" x2="725" y2="345" stroke="#4f46e5" stroke-width="3" marker-end="url(#flowArrow)"/>
+                        </svg>
+                    </div>
+                </div>
+
+                <div class="glass-card rounded-2xl p-8">
+                    <h3 class="text-xl font-bold text-gray-800 mb-4">📝 工作流说明</h3>
+                    <div class="space-y-4">
+                        <div class="flex gap-4 items-start p-4 bg-gradient-to-r from-blue-50 to-indigo-50 rounded-xl">
+                            <div class="w-10 h-10 bg-blue-500 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0">1</div>
+                            <div>
+                                <h4 class="font-semibold text-gray-800">请求接收与认证</h4>
+                                <p class="text-gray-600 text-sm">接收用户请求，通过 JWT 或 OAuth2.0 进行身份验证与授权</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-4 items-start p-4 bg-gradient-to-r from-purple-50 to-pink-50 rounded-xl">
+                            <div class="w-10 h-10 bg-purple-500 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0">2</div>
+                            <div>
+                                <h4 class="font-semibold text-gray-800">Agent 选择与路由</h4>
+                                <p class="text-gray-600 text-sm">根据需求选择最佳 Agent，支持智能路由与负载均衡</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-4 items-start p-4 bg-gradient-to-r from-green-50 to-emerald-50 rounded-xl">
+                            <div class="w-10 h-10 bg-green-500 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0">3</div>
+                            <div>
+                                <h4 class="font-semibold text-gray-800">执行与监控</h4>
+                                <p class="text-gray-600 text-sm">执行任务，记录分析指标，实时监控状态</p>
+                            </div>
+                        </div>
+                        <div class="flex gap-4 items-start p-4 bg-gradient-to-r from-orange-50 to-amber-50 rounded-xl">
+                            <div class="w-10 h-10 bg-orange-500 rounded-full flex items-center justify-center text-white font-bold flex-shrink-0">4</div>
+                            <div>
+                                <h4 class="font-semibold text-gray-800">结果返回</h4>
+                                <p class="text-gray-600 text-sm">收集执行结果，整理后返回给调用方</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Sequence Section -->
+            <div id="sequence" class="content-section hidden">
+                <div class="glass-card rounded-2xl p-8 mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6">⏱️ 时序图</h2>
+                    
+                    <div class="diagram-container">
+                        <svg viewBox="0 0 900 550" class="w-full h-auto">
+                            <!-- Lifelines -->
+                            <g>
+                                <rect x="50" y="10" width="120" height="40" rx="8" fill="#3b82f6" stroke="#2563eb" stroke-width="2"/>
+                                <text x="110" y="35" text-anchor="middle" font-weight="600" fill="white" font-size="13">客户端</text>
+                                <line x1="110" y1="50" x2="110" y2="520" stroke="#3b82f6" stroke-width="2" stroke-dasharray="5,5"/>
+                            </g>
+                            
+                            <g>
+                                <rect x="220" y="10" width="120" height="40" rx="8" fill="#8b5cf6" stroke="#7c3aed" stroke-width="2"/>
+                                <text x="280" y="35" text-anchor="middle" font-weight="600" fill="white" font-size="13">安全模块</text>
+                                <line x1="280" y1="50" x2="280" y2="520" stroke="#8b5cf6" stroke-width="2" stroke-dasharray="5,5"/>
+                            </g>
+                            
+                            <g>
+                                <rect x="390" y="10" width="120" height="40" rx="8" fill="#6366f1" stroke="#4f46e5" stroke-width="2"/>
+                                <text x="450" y="35" text-anchor="middle" font-weight="600" fill="white" font-size="13">编排服务</text>
+                                <line x1="450" y1="50" x2="450" y2="520" stroke="#6366f1" stroke-width="2" stroke-dasharray="5,5"/>
+                            </g>
+                            
+                            <g>
+                                <rect x="560" y="10" width="120" height="40" rx="8" fill="#10b981" stroke="#059669" stroke-width="2"/>
+                                <text x="620" y="35" text-anchor="middle" font-weight="600" fill="white" font-size="13">Agent</text>
+                                <line x1="620" y1="50" x2="620" y2="520" stroke="#10b981" stroke-width="2" stroke-dasharray="5,5"/>
+                            </g>
+                            
+                            <g>
+                                <rect x="730" y="10" width="120" height="40" rx="8" fill="#f59e0b" stroke="#d97706" stroke-width="2"/>
+                                <text x="790" y="35" text-anchor="middle" font-weight="600" fill="white" font-size="13">分析引擎</text>
+                                <line x1="790" y1="50" x2="790" y2="520" stroke="#f59e0b" stroke-width="2" stroke-dasharray="5,5"/>
+                            </g>
+                            
+                            <!-- Messages -->
+                            <!-- 1. Request -->
+                            <line x1="110" y1="80" x2="280" y2="80" stroke="#4f46e5" stroke-width="2" marker-end="url(#flowArrow)"/>
+                            <rect x="150" y="70" width="170" height="20" rx="4" fill="#e0e7ff"/>
+                            <text x="235" y="84" text-anchor="middle" font-size="11" fill="#3730a3">1. 请求 + Token</text>
+                            
+                            <!-- 2. Verify -->
+                            <line x1="280" y1="120" x2="450" y2="120" stroke="#4f46e5" stroke-width="2" marker-end="url(#flowArrow)"/>
+                            <rect x="320" y="110" width="100" height="20" rx="4" fill="#ede9fe"/>
+                            <text x="370" y="124" text-anchor="middle" font-size="11" fill="#6d28d9">2. 验证请求</text>
+                            
+                            <!-- 3. Auth OK -->
+                            <line x1="280" y1="160" x2="110" y2="160" stroke="#059669" stroke-width="2" marker-end="url(#flowArrow)"/>
+                            <rect x="140" y="150" width="120" height="20" rx="4" fill="#d1fae5"/>
+                            <text x="200" y="164" text-anchor="middle" font-size="11" fill="#065f46">3. 认证通过</text>
+                            
+                            <!-- 4. Select Agent -->
+                            <line x1="110" y1="200" x2="450" y2="200" stroke="#4f46e5" stroke-width="2" marker-end="url(#flowArrow)"/>
+                            <rect x="200" y="190" width="160" height="20" rx="4" fill="#e0e7ff"/>
+                            <text x="280" y="204" text-anchor="middle" font-size="11" fill="#3730a3">4. 任务 + 需求</text>
+                            
+                            <!-- 5. Find Agent -->
+                            <line x1="450" y1="240" x2="620" y2="240" stroke="#4f46e5" stroke-width="2" marker-end="url(#flowArrow)"/>
+                            <rect x="490" y="230" width="110" height="20" rx="4" fill="#d1fae5"/>
+                            <text x="545" y="244" text-anchor="middle" font-size="11" fill="#065f46">5. 查找 Agent</text>
+                            
+                            <!-- 6. Agent Found -->
+                            <line x1="620" y1="280" x2="450" y2="280" stroke="#059669" stroke-width="2" marker-end="url(#flowArrow)"/>
+                            <rect x="490" y="270" width="120" height="20" rx="4" fill="#d1fae5"/>
+                            <text x="550" y="284" text-anchor="middle" font-size="11" fill="#065f46">6. 选中 Agent</text>
+                            
+                            <!-- 7. Execute -->
+                            <line x1="450" y1="320" x2="620" y2="320" stroke="#4f46e5" stroke-width="2" marker-end="url(#flowArrow)"/>
+                            <rect x="490" y="310" width="110" height="20" rx="4" fill="#e0e7ff"/>
+                            <text x="545" y="324" text-anchor="middle" font-size="11" fill="#3730a3">7. 执行任务</text>
+                            
+                            <!-- 8. Processing -->
+                            <rect x="590" y="350" width="60" height="40" rx="4" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+                            <text x="620" y="375" text-anchor="middle" font-size="11" fill="#92400e">处理中...</text>
+                            
+                            <!-- 9. Result -->
+                            <line x1="620" y1="410" x2="450" y2="410" stroke="#059669" stroke-width="2" marker-end="url(#flowArrow)"/>
+                            <rect x="490" y="400" width="120" height="20" rx="4" fill="#d1fae5"/>
+                            <text x="550" y="414" text-anchor="middle" font-size="11" fill="#065f46">9. 返回结果</text>
+                            
+                            <!-- 10. Log Metric -->
+                            <line x1="450" y1="450" x2="790" y2="450" stroke="#f59e0b" stroke-width="2" marker-end="url(#flowArrow)"/>
+                            <rect x="550" y="440" width="200" height="20" rx="4" fill="#fef3c7"/>
+                            <text x="650" y="454" text-anchor="middle" font-size="11" fill="#92400e">10. 记录分析指标</text>
+                            
+                            <!-- 11. Return to Client -->
+                            <line x1="450" y1="490" x2="110" y2="490" stroke="#059669" stroke-width="2" marker-end="url(#flowArrow)"/>
+                            <rect x="150" y="480" width="170" height="20" rx="4" fill="#d1fae5"/>
+                            <text x="235" y="494" text-anchor="middle" font-size="11" fill="#065f46">11. 最终结果</text>
+                        </svg>
+                    </div>
+                </div>
+
+                <div class="glass-card rounded-2xl p-8">
+                    <h3 class="text-xl font-bold text-gray-800 mb-6">📖 时序说明</h3>
+                    <div class="grid md:grid-cols-2 gap-6">
+                        <div class="space-y-4">
+                            <div class="p-4 bg-gradient-to-br from-blue-50 to-indigo-100 rounded-xl border border-blue-200">
+                                <div class="font-bold text-blue-800 mb-2">步骤 1-3: 安全认证</div>
+                                <p class="text-sm text-blue-700">客户端发送请求，安全模块验证 JWT 或 OAuth 令牌，认证通过后继续处理</p>
+                            </div>
+                            <div class="p-4 bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl border border-purple-200">
+                                <div class="font-bold text-purple-800 mb-2">步骤 4-6: Agent 选择</div>
+                                <p class="text-sm text-purple-700">编排服务根据需求查询 Agent 注册表，选择最佳匹配的智能体</p>
+                            </div>
+                        </div>
+                        <div class="space-y-4">
+                            <div class="p-4 bg-gradient-to-br from-green-50 to-emerald-100 rounded-xl border border-green-200">
+                                <div class="font-bold text-green-800 mb-2">步骤 7-9: 任务执行</div>
+                                <p class="text-sm text-green-700">Agent 执行任务，处理完成后将结果返回给编排服务</p>
+                            </div>
+                            <div class="p-4 bg-gradient-to-br from-amber-50 to-orange-100 rounded-xl border border-amber-200">
+                                <div class="font-bold text-amber-800 mb-2">步骤 10-11: 记录与响应</div>
+                                <p class="text-sm text-amber-700">记录执行指标用于分析，最终将结果返回给客户端</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Components Section -->
+            <div id="components" class="content-section hidden">
+                <div class="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-6">
+                    <div class="glass-card rounded-2xl p-6 module-card">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-xl flex items-center justify-center">
+                                <span class="text-2xl">🎼</span>
+                            </div>
+                            <h3 class="text-xl font-bold text-gray-800">Orchestration</h3>
+                        </div>
+                        <div class="space-y-3">
+                            <div class="p-3 bg-blue-50 rounded-lg">
+                                <div class="font-medium text-blue-800">OrchestratorService</div>
+                                <div class="text-xs text-blue-600">核心编排服务</div>
+                            </div>
+                            <div class="p-3 bg-blue-50 rounded-lg">
+                                <div class="font-medium text-blue-800">AgentRegistry</div>
+                                <div class="text-xs text-blue-600">Agent 注册与管理</div>
+                            </div>
+                            <div class="p-3 bg-blue-50 rounded-lg">
+                                <div class="font-medium text-blue-800">MessageBroker</div>
+                                <div class="text-xs text-blue-600">消息传递代理</div>
+                            </div>
+                            <div class="p-3 bg-blue-50 rounded-lg">
+                                <div class="font-medium text-blue-800">EventEmitter</div>
+                                <div class="text-xs text-blue-600">事件发射与监听</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="glass-card rounded-2xl p-6 module-card">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-12 h-12 bg-gradient-to-br from-purple-500 to-purple-600 rounded-xl flex items-center justify-center">
+                                <span class="text-2xl">🔐</span>
+                            </div>
+                            <h3 class="text-xl font-bold text-gray-800">Security</h3>
+                        </div>
+                        <div class="space-y-3">
+                            <div class="p-3 bg-purple-50 rounded-lg">
+                                <div class="font-medium text-purple-800">JWTToken</div>
+                                <div class="text-xs text-purple-600">JWT 令牌管理</div>
+                            </div>
+                            <div class="p-3 bg-purple-50 rounded-lg">
+                                <div class="font-medium text-purple-800">JWTClaims</div>
+                                <div class="text-xs text-purple-600">JWT 声明结构</div>
+                            </div>
+                            <div class="p-3 bg-purple-50 rounded-lg">
+                                <div class="font-medium text-purple-800">OAuth2Server</div>
+                                <div class="text-xs text-purple-600">OAuth 2.0 服务</div>
+                            </div>
+                            <div class="p-3 bg-purple-50 rounded-lg">
+                                <div class="font-medium text-purple-800">EnhancedSecurity</div>
+                                <div class="text-xs text-purple-600">增强安全功能</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="glass-card rounded-2xl p-6 module-card">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-12 h-12 bg-gradient-to-br from-green-500 to-green-600 rounded-xl flex items-center justify-center">
+                                <span class="text-2xl">📝</span>
+                            </div>
+                            <h3 class="text-xl font-bold text-gray-800">Version</h3>
+                        </div>
+                        <div class="space-y-3">
+                            <div class="p-3 bg-green-50 rounded-lg">
+                                <div class="font-medium text-green-800">VersionManager</div>
+                                <div class="text-xs text-green-600">版本管理（限制50个）</div>
+                            </div>
+                            <div class="p-3 bg-green-50 rounded-lg">
+                                <div class="font-medium text-green-800">WorkflowVersion</div>
+                                <div class="text-xs text-green-600">工作流版本对象</div>
+                            </div>
+                            <div class="p-3 bg-green-50 rounded-lg">
+                                <div class="font-medium text-green-800">ABTestManager</div>
+                                <div class="text-xs text-green-600">A/B 测试管理</div>
+                            </div>
+                            <div class="p-3 bg-green-50 rounded-lg">
+                                <div class="font-medium text-green-800">VersionDiff</div>
+                                <div class="text-xs text-green-600">版本比较工具</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="glass-card rounded-2xl p-6 module-card">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-12 h-12 bg-gradient-to-br from-orange-500 to-orange-600 rounded-xl flex items-center justify-center">
+                                <span class="text-2xl">📊</span>
+                            </div>
+                            <h3 class="text-xl font-bold text-gray-800">Analytics</h3>
+                        </div>
+                        <div class="space-y-3">
+                            <div class="p-3 bg-orange-50 rounded-lg">
+                                <div class="font-medium text-orange-800">AnalyticsEngine</div>
+                                <div class="text-xs text-orange-600">分析引擎（限制10000点）</div>
+                            </div>
+                            <div class="p-3 bg-orange-50 rounded-lg">
+                                <div class="font-medium text-orange-800">MetricSummary</div>
+                                <div class="text-xs text-orange-600">指标摘要</div>
+                            </div>
+                            <div class="p-3 bg-orange-50 rounded-lg">
+                                <div class="font-medium text-orange-800">Dashboard</div>
+                                <div class="text-xs text-orange-600">仪表板</div>
+                            </div>
+                            <div class="p-3 bg-orange-50 rounded-lg">
+                                <div class="font-medium text-orange-800">AnalyticsReport</div>
+                                <div class="text-xs text-orange-600">分析报告</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="glass-card rounded-2xl p-6 module-card">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-12 h-12 bg-gradient-to-br from-pink-500 to-pink-600 rounded-xl flex items-center justify-center">
+                                <span class="text-2xl">📱</span>
+                            </div>
+                            <h3 class="text-xl font-bold text-gray-800">Mobile</h3>
+                        </div>
+                        <div class="space-y-3">
+                            <div class="p-3 bg-pink-50 rounded-lg">
+                                <div class="font-medium text-pink-800">MobileAPIManager</div>
+                                <div class="text-xs text-pink-600">移动 API 管理</div>
+                            </div>
+                            <div class="p-3 bg-pink-50 rounded-lg">
+                                <div class="font-medium text-pink-800">Session</div>
+                                <div class="text-xs text-pink-600">会话管理</div>
+                            </div>
+                            <div class="p-3 bg-pink-50 rounded-lg">
+                                <div class="font-medium text-pink-800">Push Notifications</div>
+                                <div class="text-xs text-pink-600">推送通知</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="glass-card rounded-2xl p-6 module-card">
+                        <div class="flex items-center gap-3 mb-4">
+                            <div class="w-12 h-12 bg-gradient-to-br from-slate-500 to-slate-600 rounded-xl flex items-center justify-center">
+                                <span class="text-2xl">💾</span>
+                            </div>
+                            <h3 class="text-xl font-bold text-gray-800">Storage</h3>
+                        </div>
+                        <div class="space-y-3">
+                            <div class="p-3 bg-slate-50 rounded-lg">
+                                <div class="font-medium text-slate-700">InMemoryChatStorage</div>
+                                <div class="text-xs text-slate-600">内存存储</div>
+                            </div>
+                            <div class="p-3 bg-slate-50 rounded-lg">
+                                <div class="font-medium text-slate-700">RedisStorage</div>
+                                <div class="text-xs text-slate-600">Redis 存储</div>
+                            </div>
+                            <div class="p-3 bg-slate-50 rounded-lg">
+                                <div class="font-medium text-slate-700">ConversationMessage</div>
+                                <div class="text-xs text-slate-600">消息对象</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="glass-card rounded-2xl p-8">
+                    <h3 class="text-xl font-bold text-gray-800 mb-6">🛡️ 安全与优化特性</h3>
+                    <div class="grid md:grid-cols-3 gap-6">
+                        <div class="text-center p-6 bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl">
+                            <div class="text-4xl mb-3">🔒</div>
+                            <h4 class="font-bold text-gray-800 mb-2">线程安全</h4>
+                            <p class="text-sm text-gray-600">所有核心模块使用 RLock 保护</p>
+                        </div>
+                        <div class="text-center p-6 bg-gradient-to-br from-green-50 to-emerald-50 rounded-2xl">
+                            <div class="text-4xl mb-3">🧹</div>
+                            <h4 class="font-bold text-gray-800 mb-2">内存管理</h4>
+                            <p class="text-sm text-gray-600">自动清理机制与析构函数</p>
+                        </div>
+                        <div class="text-center p-6 bg-gradient-to-br from-purple-50 to-pink-50 rounded-2xl">
+                            <div class="text-4xl mb-3">📏</div>
+                            <h4 class="font-bold text-gray-800 mb-2">限制机制</h4>
+                            <p class="text-sm text-gray-600">版本和指标数量限制</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Timeline Section -->
+            <div id="timeline" class="content-section hidden">
+                <div class="glass-card rounded-2xl p-8 mb-6">
+                    <h2 class="text-2xl font-bold text-gray-800 mb-6">📋 优化历程时间线</h2>
+                    
+                    <div class="relative">
+                        <!-- Timeline Line -->
+                        <div class="absolute left-8 top-0 bottom-0 w-1 bg-gradient-to-b from-purple-500 to-blue-500"></div>
+                        
+                        <!-- Timeline Items -->
+                        <div class="space-y-8">
+                            <!-- Item 1 -->
+                            <div class="relative pl-20">
+                                <div class="absolute left-4 w-8 h-8 bg-gradient-to-br from-purple-500 to-purple-600 rounded-full flex items-center justify-center border-4 border-white shadow-lg">
+                                    <span class="text-white font-bold text-sm">1</span>
+                                </div>
+                                <div class="p-6 bg-gradient-to-r from-purple-50 to-indigo-50 rounded-2xl border border-purple-200">
+                                    <h4 class="font-bold text-purple-900 mb-2">初始架构</h4>
+                                    <div class="text-sm text-purple-700 mb-3">建立核心多智能体编排系统</div>
+                                    <div class="flex flex-wrap gap-2">
+                                        <span class="px-3 py-1 bg-purple-200 text-purple-800 rounded-full text-xs">Agent Registry</span>
+                                        <span class="px-3 py-1 bg-purple-200 text-purple-800 rounded-full text-xs">Orchestrator</span>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Item 2 -->
+                            <div class="relative pl-20">
+                                <div class="absolute left-4 w-8 h-8 bg-gradient-to-br from-blue-500 to

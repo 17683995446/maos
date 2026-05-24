@@ -12,6 +12,7 @@ import hmac
 import secrets
 import time
 import json
+import threading
 from typing import Dict, List, Any, Optional, Set
 from dataclasses import dataclass, field
 from enum import Enum
@@ -116,7 +117,10 @@ class JWTToken:
         return f"{message}.{signature}"
     
     def verify_token(self, token: str) -> Optional[JWTClaims]:
-        """验证JWT令牌"""
+        """验证JWT令牌 - 健壮性增强版"""
+        if not token or not isinstance(token, str):
+            return None
+        
         try:
             parts = token.split(".")
             if len(parts) != 3:
@@ -133,7 +137,14 @@ class JWTToken:
             
             # 解码payload
             payload_json = self._base64url_decode(payload_b64)
+            if not payload_json:
+                return None
+            
             payload = json.loads(payload_json)
+            
+            # 验证必需字段
+            if "sub" not in payload:
+                return None
             
             # 验证时间
             now = int(time.time())
@@ -146,7 +157,21 @@ class JWTToken:
             
             return JWTClaims.from_dict(payload)
         
+        except (json.JSONDecodeError, ValueError, TypeError, KeyError):
+            return None
         except Exception:
+            return None
+    
+    @staticmethod
+    def _base64url_decode(data: str) -> Optional[str]:
+        """安全的Base64 URL解码"""
+        try:
+            padding = 4 - len(data) % 4
+            if padding != 4:
+                data += '=' * padding
+            decoded = base64.urlsafe_b64decode(data)
+            return decoded.decode('utf-8', errors='strict')
+        except (TypeError, ValueError, UnicodeDecodeError):
             return None
     
     def _sign(self, message: str) -> str:
@@ -174,14 +199,6 @@ class JWTToken:
         if isinstance(data, str):
             data = data.encode()
         return base64.urlsafe_b64encode(data).rstrip(b'=').decode()
-    
-    @staticmethod
-    def _base64url_decode(data: str) -> str:
-        """Base64 URL解码"""
-        padding = 4 - len(data) % 4
-        if padding != 4:
-            data += '=' * padding
-        return base64.urlsafe_b64decode(data).decode()
     
     @staticmethod
     def _secure_compare(a: str, b: str) -> bool:
@@ -239,9 +256,10 @@ class AuthorizationCode:
 
 
 class OAuth2Server:
-    """OAuth2.0服务器"""
+    """OAuth2.0服务器 - 线程安全版本"""
     
     def __init__(self, jwt_secret: str):
+        self._lock = threading.RLock()
         self.jwt_token = JWTToken(jwt_secret)
         self.clients: Dict[str, OAuthClient] = {}
         self.auth_codes: Dict[str, AuthorizationCode] = {}
@@ -250,13 +268,37 @@ class OAuth2Server:
         self.refresh_lifetime = timedelta(days=30)
         self.access_token_lifetime = timedelta(hours=1)
     
+    def cleanup(self):
+        """清理过期的授权码和令牌"""
+        now = datetime.now()
+        with self._lock:
+            # 清理过期的授权码
+            expired_codes = [
+                code for code, auth_code in self.auth_codes.items()
+                if auth_code.expires_at < now
+            ]
+            for code in expired_codes:
+                del self.auth_codes[code]
+            
+            # 清理过期的刷新令牌
+            expired_refresh = [
+                token for token, data in self.refresh_tokens.items()
+                if data.get('expires_at', datetime.min) < now
+            ]
+            for token in expired_refresh:
+                del self.refresh_tokens[token]
+    
+    def __del__(self):
+        """析构函数"""
+        self.cleanup()
+    
     def register_client(
         self,
         client_name: str,
         redirect_uris: List[str],
         allowed_scopes: List[str] = None
     ) -> tuple[str, str]:
-        """注册OAuth客户端"""
+        """注册OAuth客户端 - 线程安全"""
         client_id = f"client_{secrets.token_hex(16)}"
         client_secret = secrets.token_urlsafe(32)
         
@@ -264,12 +306,13 @@ class OAuth2Server:
             client_id=client_id,
             client_secret=client_secret,
             client_name=client_name,
-            redirect_uris=redirect_uris,
-            allowed_scopes=allowed_scopes or [scope.value for scope in OAuthScope],
+            redirect_uris=list(redirect_uris),
+            allowed_scopes=list(allowed_scopes or [scope.value for scope in OAuthScope]),
             created_at=datetime.now()
         )
         
-        self.clients[client_id] = client
+        with self._lock:
+            self.clients[client_id] = client
         return client_id, client_secret
     
     def authorize(
@@ -282,13 +325,14 @@ class OAuth2Server:
         code_challenge: Optional[str] = None,
         code_challenge_method: Optional[str] = None
     ) -> Optional[str]:
-        """授权码授权"""
-        client = self.clients.get(client_id)
-        if not client or not client.is_active:
-            return None
-        
-        if redirect_uri not in client.redirect_uris:
-            return None
+        """授权码授权 - 线程安全"""
+        with self._lock:
+            client = self.clients.get(client_id)
+            if not client or not client.is_active:
+                return None
+            
+            if redirect_uri not in client.redirect_uris:
+                return None
         
         # 生成授权码
         code = secrets.token_urlsafe(32)
@@ -298,13 +342,14 @@ class OAuth2Server:
             client_id=client_id,
             user_id=user_id,
             redirect_uri=redirect_uri,
-            scopes=scopes,
+            scopes=list(scopes),
             expires_at=datetime.now() + self.code_lifetime,
             code_challenge=code_challenge,
             code_challenge_method=code_challenge_method
         )
         
-        self.auth_codes[code] = auth_code
+        with self._lock:
+            self.auth_codes[code] = auth_code
         return code
     
     def exchange_code_for_token(
@@ -314,31 +359,35 @@ class OAuth2Server:
         client_secret: str,
         code_verifier: Optional[str] = None
     ) -> Optional[Dict]:
-        """交换授权码获取令牌"""
-        auth_code = self.auth_codes.get(code)
-        if not auth_code:
-            return None
-        
-        if auth_code.expires_at < datetime.now():
-            del self.auth_codes[code]
-            return None
-        
-        client = self.clients.get(client_id)
-        if not client or client.client_secret != client_secret:
-            return None
-        
-        # PKCE验证（简化版）
-        if auth_code.code_challenge:
-            if not code_verifier:
+        """交换授权码获取令牌 - 线程安全"""
+        with self._lock:
+            auth_code = self.auth_codes.get(code)
+            if not auth_code:
                 return None
-            # 实际应该验证PKCE
-            pass
+            
+            if auth_code.expires_at < datetime.now():
+                del self.auth_codes[code]
+                return None
+            
+            client = self.clients.get(client_id)
+            if not client or client.client_secret != client_secret:
+                return None
+            
+            # PKCE验证（简化版）
+            if auth_code.code_challenge:
+                if not code_verifier:
+                    return None
+                # 实际应该验证PKCE
+                pass
+            
+            # 删除授权码
+            del self.auth_codes[code]
+            
+            user_id = auth_code.user_id
+            scopes = auth_code.scopes
         
-        # 删除授权码
-        del self.auth_codes[code]
-        
-        # 生成令牌
-        return self._generate_token_response(auth_code.user_id, auth_code.scopes)
+        # 在锁外生成令牌，避免长时间持有锁
+        return self._generate_token_response(user_id, scopes)
     
     def client_credentials_grant(
         self,
@@ -346,10 +395,11 @@ class OAuth2Server:
         client_secret: str,
         scopes: List[str]
     ) -> Optional[Dict]:
-        """客户端凭证授权"""
-        client = self.clients.get(client_id)
-        if not client or client.client_secret != client_secret:
-            return None
+        """客户端凭证授权 - 线程安全"""
+        with self._lock:
+            client = self.clients.get(client_id)
+            if not client or client.client_secret != client_secret:
+                return None
         
         # 使用client_id作为subject
         return self._generate_token_response(client_id, scopes)
@@ -358,20 +408,21 @@ class OAuth2Server:
         self,
         refresh_token: str
     ) -> Optional[Dict]:
-        """刷新访问令牌"""
-        token_data = self.refresh_tokens.get(refresh_token)
-        if not token_data:
-            return None
-        
-        if token_data.get("expires_at", datetime.now()) < datetime.now():
-            del self.refresh_tokens[refresh_token]
-            return None
+        """刷新访问令牌 - 线程安全"""
+        with self._lock:
+            token_data = self.refresh_tokens.get(refresh_token)
+            if not token_data:
+                return None
+            
+            if token_data.get("expires_at", datetime.now()) < datetime.now():
+                del self.refresh_tokens[refresh_token]
+                return None
+            
+            user_id = token_data["user_id"]
+            scopes = token_data["scopes"]
         
         # 生成新令牌
-        return self._generate_token_response(
-            token_data["user_id"],
-            token_data["scopes"]
-        )
+        return self._generate_token_response(user_id, scopes)
     
     def _generate_token_response(self, user_id: str, scopes: List[str]) -> Dict:
         """生成令牌响应"""

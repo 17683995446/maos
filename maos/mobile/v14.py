@@ -8,6 +8,7 @@ from typing import Any, Dict, List, Optional
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
 import uuid
+import threading
 
 
 class MobilePlatform(Enum):
@@ -98,83 +99,112 @@ class MobileExecutionResult:
 
 
 class MobileAPIManager:
-    """移动端API管理器"""
+    """移动端API管理器 - 线程安全版本"""
     
     def __init__(self):
+        self._lock = threading.RLock()
         self._devices: Dict[str, MobileDevice] = {}
         self._notifications: Dict[str, PushNotification] = {}
         self._sessions: Dict[str, MobileSession] = {}
     
+    def cleanup(self):
+        """清理资源，防止内存泄漏"""
+        with self._lock:
+            self._devices.clear()
+            self._notifications.clear()
+            self._sessions.clear()
+    
+    def clear_expired_sessions(self):
+        """清理过期的会话"""
+        now = datetime.now()
+        with self._lock:
+            expired_tokens = [
+                token for token, session in self._sessions.items()
+                if session.expires_at <= now
+            ]
+            for token in expired_tokens:
+                del self._sessions[token]
+    
+    def __del__(self):
+        """析构函数，确保清理资源"""
+        self.cleanup()
+    
     def register_device(self, user_id: str, device_token: str, platform: MobilePlatform,
                        app_version: str, os_version: str, language: str = "zh-CN") -> MobileDevice:
-        """注册设备"""
-        if isinstance(platform, str):
-            platform = MobilePlatform(platform)
-        device = MobileDevice(
-            user_id=user_id,
-            platform=platform,
-            device_token=device_token,
-            app_version=app_version,
-            os_version=os_version,
-            language=language
-        )
-        self._devices[device.id] = device
-        print(f"📱 Device registered: {device.id} ({platform.value})")
-        return device
+        """注册设备 - 线程安全"""
+        with self._lock:
+            if isinstance(platform, str):
+                platform = MobilePlatform(platform)
+            device = MobileDevice(
+                user_id=user_id,
+                platform=platform,
+                device_token=device_token,
+                app_version=app_version,
+                os_version=os_version,
+                language=language
+            )
+            self._devices[device.id] = device
+            print(f"📱 Device registered: {device.id} ({platform.value})")
+            return device
     
     def get_user_devices(self, user_id: str) -> List[MobileDevice]:
-        """获取用户设备列表"""
-        return [d for d in self._devices.values() if d.user_id == user_id and d.enabled]
+        """获取用户设备列表 - 线程安全"""
+        with self._lock:
+            return [d for d in self._devices.values() if d.user_id == user_id and d.enabled]
     
     def update_device_token(self, device_id: str, new_token: str) -> bool:
-        """更新设备token"""
-        device = self._devices.get(device_id)
-        if not device:
-            return False
-        device.device_token = new_token
-        device.last_active_at = datetime.now()
-        return True
+        """更新设备token - 线程安全"""
+        with self._lock:
+            device = self._devices.get(device_id)
+            if not device:
+                return False
+            device.device_token = new_token
+            device.last_active_at = datetime.now()
+            return True
     
     def create_session(self, user_id: str, device_id: str) -> MobileSession:
-        """创建会话"""
-        session = MobileSession(
-            user_id=user_id,
-            device_id=device_id,
-            token=str(uuid.uuid4())
-        )
-        self._sessions[session.token] = session
-        return session
+        """创建会话 - 线程安全"""
+        with self._lock:
+            session = MobileSession(
+                user_id=user_id,
+                device_id=device_id,
+                token=str(uuid.uuid4())
+            )
+            self._sessions[session.token] = session
+            return session
     
     def validate_session(self, token: str) -> Optional[MobileSession]:
-        """验证会话"""
-        session = self._sessions.get(token)
-        if session and session.expires_at > datetime.now():
-            session.last_access_at = datetime.now()
-            return session
-        return None
+        """验证会话 - 线程安全"""
+        with self._lock:
+            session = self._sessions.get(token)
+            if session and session.expires_at > datetime.now():
+                session.last_access_at = datetime.now()
+                return session
+            return None
     
     def send_notification(self, notification: PushNotification) -> bool:
-        """发送通知"""
-        self._notifications[notification.id] = notification
-        
-        targets = []
-        if notification.target_user_id:
-            targets.extend(self.get_user_devices(notification.target_user_id))
-        elif notification.target_device_id:
-            device = self._devices.get(notification.target_device_id)
-            if device:
-                targets.append(device)
-        else:
-            targets = list(self._devices.values())
-        
-        print(f"📤 Sending notification to {len(targets)} devices")
-        
-        for device in targets:
-            self._send_to_device(device, notification)
-        
-        notification.delivered = True
-        notification.delivered_at = datetime.now()
-        return True
+        """发送通知 - 线程安全"""
+        with self._lock:
+            self._notifications[notification.id] = notification
+            
+            targets = []
+            if notification.target_user_id:
+                targets.extend(self.get_user_devices(notification.target_user_id))
+            elif notification.target_device_id:
+                device = self._devices.get(notification.target_device_id)
+                if device:
+                    targets.append(device)
+            else:
+                targets = list(self._devices.values())
+            
+            print(f"📤 Sending notification to {len(targets)} devices")
+            
+            for device in targets:
+                self._send_to_device(device, notification)
+            
+            notification.delivered = True
+            notification.delivered_at = datetime.now()
+            return True
     
     def _send_to_device(self, device: MobileDevice, notification: PushNotification) -> None:
         """发送到单个设备"""
@@ -184,24 +214,26 @@ class MobileAPIManager:
             print(f"   → Android: {device.device_token[:20]}...")
     
     def get_user_notifications(self, user_id: str, limit: int = 50) -> List[PushNotification]:
-        """获取用户通知"""
-        user_devices = self.get_user_devices(user_id)
-        device_ids = [d.id for d in user_devices]
-        
-        notifications = [
-            n for n in self._notifications.values()
-            if n.target_user_id == user_id or n.target_device_id in device_ids
-        ]
-        
-        return sorted(notifications, key=lambda n: n.created_at, reverse=True)[:limit]
+        """获取用户通知 - 线程安全"""
+        with self._lock:
+            user_devices = self.get_user_devices(user_id)
+            device_ids = [d.id for d in user_devices]
+            
+            notifications = [
+                n for n in self._notifications.values()
+                if n.target_user_id == user_id or n.target_device_id in device_ids
+            ]
+            
+            return sorted(notifications, key=lambda n: n.created_at, reverse=True)[:limit]
     
     def mark_notification_read(self, notification_id: str) -> bool:
-        """标记通知已读"""
-        notification = self._notifications.get(notification_id)
-        if notification:
-            notification.data["read"] = True
-            return True
-        return False
+        """标记通知已读 - 线程安全"""
+        with self._lock:
+            notification = self._notifications.get(notification_id)
+            if notification:
+                notification.data["read"] = True
+                return True
+            return False
     
     def get_workflow_summary(self, user_id: str) -> List[MobileWorkflowSummary]:
         """获取工作流摘要（移动端优化）"""
@@ -234,7 +266,7 @@ class MobileAPIManager:
     
     def execute_workflow_mobile(self, session_token: str, workflow_id: str, 
                                input_data: Dict[str, Any] = None) -> MobileExecutionResult:
-        """移动端执行工作流"""
+        """移动端执行工作流 - 线程安全"""
         session = self.validate_session(session_token)
         if not session:
             return MobileExecutionResult(status="error", error="Invalid session")
@@ -244,7 +276,7 @@ class MobileAPIManager:
             workflow_id=workflow_id,
             workflow_name="订单处理",
             status="completed",
-            output_data=input_data or {},
+            output_data=dict(input_data) if input_data else {},
             started_at=datetime.now(),
             completed_at=datetime.now(),
             latency_ms=156.8

@@ -9,6 +9,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 import asyncio
 import time
+import threading
 from collections import defaultdict
 import uuid
 
@@ -73,43 +74,63 @@ class Workflow:
 
 
 class EventEmitter:
-    """事件发射器"""
+    """事件发射器 - 线程安全版本"""
     
     def __init__(self):
+        self._lock = threading.RLock()
         self._listeners: Dict[OrchestratorEventType, List[Callable]] = defaultdict(list)
         self._async_listeners: Dict[OrchestratorEventType, List[Callable]] = defaultdict(list)
     
+    def cleanup(self):
+        """清理资源"""
+        with self._lock:
+            self._listeners.clear()
+            self._async_listeners.clear()
+    
+    def __del__(self):
+        """析构函数"""
+        self.cleanup()
+    
     def on(self, event_type: OrchestratorEventType, handler: Callable) -> None:
-        """注册同步事件监听器"""
-        if asyncio.iscoroutinefunction(handler):
-            self._async_listeners[event_type].append(handler)
-        else:
-            self._listeners[event_type].append(handler)
+        """注册同步事件监听器 - 线程安全"""
+        with self._lock:
+            if asyncio.iscoroutinefunction(handler):
+                self._async_listeners[event_type].append(handler)
+            else:
+                self._listeners[event_type].append(handler)
     
     def off(self, event_type: OrchestratorEventType, handler: Callable) -> None:
-        """注销事件监听器"""
-        if handler in self._listeners[event_type]:
-            self._listeners[event_type].remove(handler)
-        if handler in self._async_listeners[event_type]:
-            self._async_listeners[event_type].remove(handler)
+        """注销事件监听器 - 线程安全"""
+        with self._lock:
+            if handler in self._listeners[event_type]:
+                self._listeners[event_type].remove(handler)
+            if handler in self._async_listeners[event_type]:
+                self._async_listeners[event_type].remove(handler)
     
     async def emit_async(self, event: OrchestratorEvent) -> None:
-        """异步触发事件"""
-        for handler in self._listeners[event.event_type]:
+        """异步触发事件 - 线程安全"""
+        with self._lock:
+            sync_handlers = list(self._listeners[event.event_type])
+            async_handlers = list(self._async_listeners[event.event_type])
+        
+        for handler in sync_handlers:
             try:
                 handler(event)
             except Exception as e:
                 print(f"Error in sync event handler: {e}")
         
-        for handler in self._async_listeners[event.event_type]:
+        for handler in async_handlers:
             try:
                 await handler(event)
             except Exception as e:
                 print(f"Error in async event handler: {e}")
     
     def emit(self, event: OrchestratorEvent) -> None:
-        """同步触发事件"""
-        for handler in self._listeners[event.event_type]:
+        """同步触发事件 - 线程安全"""
+        with self._lock:
+            handlers = list(self._listeners[event.event_type])
+        
+        for handler in handlers:
             try:
                 handler(event)
             except Exception as e:
@@ -117,125 +138,185 @@ class EventEmitter:
 
 
 class AgentRegistry:
-    """Agent注册表"""
+    """Agent注册表 - 线程安全版本"""
     
     def __init__(self):
+        self._lock = threading.RLock()
         self._agents: Dict[str, Any] = {}
         self._capabilities: Dict[str, List[str]] = {}
         self._status: Dict[str, str] = {}
     
+    def cleanup(self):
+        """清理资源"""
+        with self._lock:
+            self._agents.clear()
+            self._capabilities.clear()
+            self._status.clear()
+    
+    def __del__(self):
+        """析构函数"""
+        self.cleanup()
+    
     def register(self, agent: Any) -> bool:
-        """注册Agent"""
+        """注册Agent - 线程安全"""
         if not hasattr(agent, 'name'):
             return False
         
-        self._agents[agent.name] = agent
-        self._capabilities[agent.name] = getattr(agent, 'capabilities', [])
-        self._status[agent.name] = getattr(agent, 'status', 'idle')
+        with self._lock:
+            self._agents[agent.name] = agent
+            self._capabilities[agent.name] = list(getattr(agent, 'capabilities', []))
+            self._status[agent.name] = getattr(agent, 'status', 'idle')
         return True
     
     def unregister(self, agent_name: str) -> bool:
-        """注销Agent"""
-        if agent_name in self._agents:
-            del self._agents[agent_name]
-            if agent_name in self._capabilities:
-                del self._capabilities[agent_name]
-            if agent_name in self._status:
-                del self._status[agent_name]
-            return True
+        """注销Agent - 线程安全"""
+        with self._lock:
+            if agent_name in self._agents:
+                del self._agents[agent_name]
+                if agent_name in self._capabilities:
+                    del self._capabilities[agent_name]
+                if agent_name in self._status:
+                    del self._status[agent_name]
+                return True
         return False
     
     def get_agent(self, name: str) -> Optional[Any]:
-        """获取Agent"""
-        return self._agents.get(name)
+        """获取Agent - 线程安全"""
+        with self._lock:
+            return self._agents.get(name)
     
     def get_all_agents(self) -> List[Any]:
-        """获取所有Agent"""
-        return list(self._agents.values())
+        """获取所有Agent - 线程安全"""
+        with self._lock:
+            return list(self._agents.values())
     
     def get_available_agents(self) -> List[Any]:
-        """获取可用Agent"""
-        return [
-            agent for agent in self._agents.values()
-            if getattr(agent, 'status', 'busy') != 'busy'
-        ]
+        """获取可用Agent - 线程安全"""
+        with self._lock:
+            return [
+                agent for agent in self._agents.values()
+                if getattr(agent, 'status', 'busy') != 'busy'
+            ]
     
     def select_best_agent(self, requirements: List[str]) -> Optional[Any]:
-        """选择最佳Agent"""
-        if not requirements:
-            return self.get_available_agents()[0] if self.get_available_agents() else None
-        
-        scored_agents = []
-        for agent_name, capabilities in self._capabilities.items():
-            score = sum(1 for req in requirements if req in capabilities)
-            if score > 0 and self._status.get(agent_name) != 'busy':
-                scored_agents.append((score, self._agents[agent_name]))
-        
-        if scored_agents:
-            scored_agents.sort(key=lambda x: x[0], reverse=True)
-            return scored_agents[0][1]
-        
-        return self.get_available_agents()[0] if self.get_available_agents() else None
+        """选择最佳Agent - 线程安全"""
+        with self._lock:
+            if not requirements:
+                available = self.get_available_agents()
+                return available[0] if available else None
+            
+            scored_agents = []
+            for agent_name, capabilities in self._capabilities.items():
+                score = sum(1 for req in requirements if req in capabilities)
+                if score > 0 and self._status.get(agent_name) != 'busy':
+                    scored_agents.append((score, self._agents[agent_name]))
+            
+            if scored_agents:
+                scored_agents.sort(key=lambda x: x[0], reverse=True)
+                return scored_agents[0][1]
+            
+            available = self.get_available_agents()
+            return available[0] if available else None
     
     def update_agent_status(self, agent_name: str, status: str) -> bool:
-        """更新Agent状态"""
-        if agent_name in self._agents:
-            self._status[agent_name] = status
-            if hasattr(self._agents[agent_name], 'status'):
-                self._agents[agent_name].status = status
-            return True
+        """更新Agent状态 - 线程安全"""
+        with self._lock:
+            if agent_name in self._agents:
+                self._status[agent_name] = status
+                if hasattr(self._agents[agent_name], 'status'):
+                    self._agents[agent_name].status = status
+                return True
         return False
     
     def get_statistics(self) -> Dict[str, Any]:
-        """获取Agent统计信息"""
-        status_counts = defaultdict(int)
-        for status in self._status.values():
-            status_counts[status] += 1
-        
-        return {
-            'total': len(self._agents),
-            'by_status': dict(status_counts),
-            'capabilities': self._capabilities.copy()
-        }
+        """获取Agent统计信息 - 线程安全"""
+        with self._lock:
+            status_counts = defaultdict(int)
+            for status in self._status.values():
+                status_counts[status] += 1
+            
+            return {
+                'total': len(self._agents),
+                'by_status': dict(status_counts),
+                'capabilities': {k: list(v) for k, v in self._capabilities.items()}
+            }
 
 
 class MessageBroker:
-    """消息代理"""
+    """消息代理 - 线程安全版本"""
     
-    def __init__(self):
+    def __init__(self, max_messages: int = 10000):
+        self._lock = threading.RLock()
         self._messages: List[Dict[str, Any]] = []
         self._subscribers: Dict[str, List[Callable]] = defaultdict(list)
+        self._max_messages = max_messages
+    
+    def cleanup(self):
+        """清理资源"""
+        with self._lock:
+            self._messages.clear()
+            self._subscribers.clear()
+    
+    def __del__(self):
+        """析构函数"""
+        self.cleanup()
     
     def publish(self, message: Dict[str, Any]) -> None:
-        """发布消息"""
-        message['timestamp'] = datetime.now().isoformat()
-        message['id'] = str(uuid.uuid4())
-        self._messages.append(message)
+        """发布消息 - 线程安全"""
+        msg_copy = dict(message)
+        msg_copy['timestamp'] = datetime.now().isoformat()
+        msg_copy['id'] = str(uuid.uuid4())
         
-        for subscriber in self._subscribers.get(message.get('type', 'default'), []):
+        subscribers = []
+        with self._lock:
+            self._messages.append(msg_copy)
+            
+            # 限制消息数量
+            if len(self._messages) > self._max_messages:
+                self._messages = self._messages[-self._max_messages:]
+            
+            # 获取订阅者列表的副本
+            subscribers = list(self._subscribers.get(msg_copy.get('type', 'default'), []))
+        
+        # 在锁外调用回调，避免死锁
+        for subscriber in subscribers:
             try:
-                subscriber(message)
+                subscriber(msg_copy)
             except Exception as e:
                 print(f"Error in message subscriber: {e}")
     
     def subscribe(self, msg_type: str, handler: Callable) -> None:
-        """订阅消息"""
-        self._subscribers[msg_type].append(handler)
+        """订阅消息 - 线程安全"""
+        with self._lock:
+            self._subscribers[msg_type].append(handler)
     
     def unsubscribe(self, msg_type: str, handler: Callable) -> None:
-        """取消订阅"""
-        if handler in self._subscribers[msg_type]:
-            self._subscribers[msg_type].remove(handler)
+        """取消订阅 - 线程安全"""
+        with self._lock:
+            if handler in self._subscribers[msg_type]:
+                self._subscribers[msg_type].remove(handler)
     
     def get_messages(self, msg_type: Optional[str] = None, limit: int = 100) -> List[Dict[str, Any]]:
-        """获取消息历史"""
-        if msg_type:
-            return [m for m in self._messages if m.get('type') == msg_type][-limit:]
-        return self._messages[-limit:]
+        """获取消息历史 - 线程安全"""
+        with self._lock:
+            if msg_type:
+                return [dict(m) for m in self._messages if m.get('type') == msg_type][-limit:]
+            return [dict(m) for m in self._messages[-limit:]]
+    
+    def receive(self, msg_type: Optional[str] = None, timeout: float = 1.0) -> Optional[Dict[str, Any]]:
+        """接收消息（兼容旧API）- 线程安全"""
+        with self._lock:
+            if msg_type:
+                for msg in reversed(self._messages):
+                    if msg.get('type') == msg_type:
+                        return dict(msg)
+            elif self._messages:
+                return dict(self._messages[-1])
+        return None
 
 
 class OrchestratorService:
-    """编排器服务核心类"""
+    """编排器服务核心类 - 线程安全版本"""
     
     def __init__(
         self,
@@ -255,7 +336,21 @@ class OrchestratorService:
         self._execution_times: Dict[str, float] = {}
         self._task_manager = None
         self._lock = asyncio.Lock()
+        self._thread_lock = threading.RLock()  # 添加线程锁
         self._workflow_tasks: Dict[str, List[str]] = {}
+    
+    def cleanup(self):
+        """清理资源，防止内存泄漏"""
+        with self._thread_lock:
+            self.agent_registry.cleanup()
+            self.message_broker.cleanup()
+            self.event_emitter.cleanup()
+            self._execution_times.clear()
+            self._workflow_tasks.clear()
+    
+    def __del__(self):
+        """析构函数"""
+        self.cleanup()
     
     def set_task_manager(self, task_manager: Any) -> None:
         """设置任务管理器"""

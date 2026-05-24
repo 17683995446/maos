@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 import time
 from collections import defaultdict
 from datetime import datetime
@@ -76,6 +77,7 @@ class InMemoryChatStorage(ChatStorage):
         self.conversations: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
         self.sessions: Dict[str, Dict[str, Any]] = {}
         self._lock = asyncio.Lock()
+        self._thread_lock = threading.Lock()  # 线程锁，用于同步操作
         self._cleanup_task: Optional[asyncio.Task] = None
         self._auto_cleanup = auto_cleanup
         self._cleanup_interval = cleanup_interval
@@ -593,12 +595,117 @@ class InMemoryChatStorage(ChatStorage):
         self._entry_access_times.clear()
         logger.info("All in-memory storage cleared")
 
+    def save_message(self, user_id: str, message: Dict[str, Any], skip_consecutive_check: bool = True) -> bool:
+        """
+        同步保存单条消息（线程安全版本）
+
+        Args:
+            user_id: 用户标识符
+            message: 包含消息内容的字典
+            skip_consecutive_check: 是否跳过连续相同角色消息的检查
+
+        Returns:
+            保存成功返回True
+
+        Note:
+            直接使用threading.Lock，在多线程环境中安全
+        """
+        try:
+            session_id = message.get('session_id', 'default')
+            agent_id = message.get('agent_id', 'default')
+
+            content = message.get('content', '')
+            msg_id = message.get('id', f'msg_{int(time.time() * 1000000)}')
+            timestamp_str = message.get('timestamp')
+            
+            # 处理时间戳 - 更健壮的方式
+            if timestamp_str:
+                if isinstance(timestamp_str, (int, float)):
+                    try:
+                        # 检查时间戳是否在合理范围内
+                        # 合理范围：从 1970-01-01 到 未来 100 年
+                        current_time = time.time()
+                        min_timestamp = 0
+                        max_timestamp = current_time + (100 * 365 * 24 * 60 * 60)
+                        
+                        if min_timestamp <= timestamp_str <= max_timestamp:
+                            timestamp = datetime.fromtimestamp(timestamp_str)
+                        else:
+                            timestamp = datetime.now()
+                    except (ValueError, OSError, OverflowError, OSError):
+                        # 捕获所有可能的时间戳错误
+                        timestamp = datetime.now()
+                elif isinstance(timestamp_str, str):
+                    try:
+                        timestamp = datetime.fromisoformat(timestamp_str)
+                    except ValueError:
+                        timestamp = datetime.now()
+                else:
+                    timestamp = datetime.now()
+            else:
+                timestamp = datetime.now()
+
+            # 构造消息字典
+            message_dict = {
+                'role': 'user',
+                'content': content if isinstance(content, list) else [{'text': content}],
+                'timestamp': timestamp.isoformat(),
+                'id': msg_id,
+            }
+
+            # 使用线程锁保护操作（线程安全）
+            with self._thread_lock:
+                key = self.generate_key(user_id, session_id, agent_id)
+                conversation = self.conversations[key]
+                
+                # 保存消息
+                conversation.append(message_dict)
+                self.conversations[key] = conversation
+                
+                # 更新访问时间
+                self._entry_access_times[key] = time.time()
+                
+                # 更新会话信息（使用正确的 # 分隔符，与其他地方保持一致）
+                session_key = f"{user_id}#{session_id}"
+                self.sessions[session_key] = {
+                    'user_id': user_id,
+                    'session_id': session_id,
+                    'created_at': datetime.now().isoformat(),
+                    'updated_at': datetime.now().isoformat(),
+                    'message_count': len(conversation),
+                    'metadata': {},
+                    'active': True,
+                }
+                
+                return True
+
+        except Exception as e:
+            logger.error(f"Error saving message: {e}")
+            return False
+
+    def get_conversation(self, user_id: str, session_id: str = 'default', 
+                        agent_id: str = 'default') -> List[Dict[str, Any]]:
+        """
+        获取对话记录（简化接口）
+
+        Args:
+            user_id: 用户标识符
+            session_id: 会话标识符（默认 'default'）
+            agent_id: Agent标识符（默认 'default'）
+
+        Returns:
+            消息字典列表
+        """
+        key = self.generate_key(user_id, session_id, agent_id)
+        return list(self.conversations.get(key, []))
+
     def get_stats(self) -> Dict[str, Any]:
-        """获取存储统计信息"""
-        return {
-            'conversation_count': len(self.conversations),
-            'session_count': len(self.sessions),
-            'total_messages': sum(len(msgs) for msgs in self.conversations.values()),
-            'auto_cleanup': self._auto_cleanup,
-            'entry_ttl': self._entry_ttl,
-        }
+        """获取存储统计信息（线程安全）"""
+        with self._thread_lock:
+            return {
+                'conversation_count': len(self.conversations),
+                'session_count': len(self.sessions),
+                'total_messages': sum(len(msgs) for msgs in list(self.conversations.values())),
+                'auto_cleanup': self._auto_cleanup,
+                'entry_ttl': self._entry_ttl,
+            }
