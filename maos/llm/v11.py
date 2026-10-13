@@ -55,11 +55,11 @@ class LLMClient:
 
     def _init_client(self):
         """初始化客户端"""
-        api_key = os.environ.get("SILICONFLOW_API_KEY", "sk-uqelhavcdhfxjzjesdenxpbtqombamjniazzjtbssmdcwdvg")
+        api_key = os.environ.get("SILICONFLOW_API_KEY", "REDACTED_API_KEY")
         base_url = None
 
         if self.config.provider == LLMProvider.SILICONFLOW:
-            api_key = os.environ.get("SILICONFLOW_API_KEY", "sk-uqelhavcdhfxjzjesdenxpbtqombamjniazzjtbssmdcwdvg")
+            api_key = os.environ.get("SILICONFLOW_API_KEY", "REDACTED_API_KEY")
             base_url = "https://api.siliconflow.cn/v1"
         elif self.config.provider == LLMProvider.OPENAI:
             api_key = os.environ.get("OPENAI_API_KEY", "")

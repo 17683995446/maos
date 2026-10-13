@@ -89,7 +89,7 @@ asyncio.run(chat())
 
 ```env
 # 硅基流动 API密钥
-SILICONFLOW_API_KEY=sk-uqelhavcdhfxjzjesdenxpbtqombamjniazzjtbssmdcwdvg
+SILICONFLOW_API_KEY=REDACTED_API_KEY
 
 # API基础URL
 SILICONFLOW_BASE_URL=https://api.siliconflow.cn/v1
